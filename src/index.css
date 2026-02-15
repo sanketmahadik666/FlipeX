@@ -5,6 +5,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Page flip library styles */
+.page-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: hsl(var(--card));
+}
+
+.book-container {
+  margin: 0 auto;
+}
+
 /* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
 All colors MUST be HSL.
 */
