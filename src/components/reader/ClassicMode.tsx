@@ -90,6 +90,10 @@ const SinglePage = forwardRef<HTMLDivElement, {
     );
   }
 
+  // Detect image-based pages (rendered from PDF)
+  const isImagePage = pageData.content?.length === 1 && pageData.content[0]?.startsWith('__IMAGE__');
+  const imageUrl = isImagePage ? pageData.content[0].replace('__IMAGE__', '') : null;
+
   return (
     <div ref={ref} className="page-wrapper" style={{ width: '100%', height: '100%' }}>
       <div
@@ -113,42 +117,59 @@ const SinglePage = forwardRef<HTMLDivElement, {
         )}
 
         {/* Page content area - strictly contained within page height */}
-        <div
-          className={`flex-1 flex flex-col overflow-hidden ${
-            side === 'single' ? 'px-6 py-6' : side === 'left' ? 'pl-8 pr-6 py-6' : 'pr-8 pl-6 py-6'
-          }`}
-          style={{ minHeight: 0 }}
-        >
-          {pageData.isChapterStart && (
-            <h2 className="mb-4 text-center font-serif text-base font-semibold tracking-widest uppercase"
-              style={{ color: 'rgba(60,50,40,0.55)' }}
-            >
-              {pageData.chapterTitle}
-            </h2>
-          )}
+        {isImagePage ? (
+          /* Image-based page — render PDF page as-is */
           <div
-            className="flex-1 font-serif overflow-hidden"
-            style={{
-              fontSize: `${fontSize}px`,
-              lineHeight: lineSpacing,
-              color: 'rgba(30,25,20,0.85)',
-              minHeight: 0,
-            }}
+            className="flex-1 flex items-center justify-center overflow-hidden p-1"
+            style={{ minHeight: 0 }}
           >
-            {pageData.content?.map((paragraph, i) => (
-              <p key={i} className="mb-2.5 text-justify leading-relaxed" style={{ wordBreak: 'break-word' }}>
-                {paragraph}
-              </p>
-            ))}
+            <img
+              src={imageUrl!}
+              alt={`Page ${pageData.chapterIdx * 10 + pageData.pageIdx + 1}`}
+              className="max-w-full max-h-full object-contain"
+              style={{ display: 'block' }}
+              draggable={false}
+            />
           </div>
+        ) : (
+          /* Text-based page — render paragraphs */
+          <div
+            className={`flex-1 flex flex-col overflow-hidden ${
+              side === 'single' ? 'px-6 py-6' : side === 'left' ? 'pl-8 pr-6 py-6' : 'pr-8 pl-6 py-6'
+            }`}
+            style={{ minHeight: 0 }}
+          >
+            {pageData.isChapterStart && (
+              <h2 className="mb-4 text-center font-serif text-base font-semibold tracking-widest uppercase"
+                style={{ color: 'rgba(60,50,40,0.55)' }}
+              >
+                {pageData.chapterTitle}
+              </h2>
+            )}
+            <div
+              className="flex-1 font-serif overflow-hidden"
+              style={{
+                fontSize: `${fontSize}px`,
+                lineHeight: lineSpacing,
+                color: 'rgba(30,25,20,0.85)',
+                minHeight: 0,
+              }}
+            >
+              {pageData.content?.map((paragraph, i) => (
+                <p key={i} className="mb-2.5 text-justify leading-relaxed" style={{ wordBreak: 'break-word' }}>
+                  {paragraph}
+                </p>
+              ))}
+            </div>
 
-          {/* Page number at bottom */}
-          <div className="mt-auto pt-2 text-center">
-            <span className="text-xs font-serif" style={{ color: 'rgba(60,50,40,0.35)' }}>
-              {pageData.chapterIdx * 10 + pageData.pageIdx + 1}
-            </span>
+            {/* Page number at bottom */}
+            <div className="mt-auto pt-2 text-center">
+              <span className="text-xs font-serif" style={{ color: 'rgba(60,50,40,0.35)' }}>
+                {pageData.chapterIdx * 10 + pageData.pageIdx + 1}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Subtle page edge effect */}
         <div

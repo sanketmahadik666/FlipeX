@@ -2,8 +2,9 @@ import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { useSetRecoilState } from 'recoil';
-import { Upload as UploadIcon, FileText, AlertCircle, BookOpen } from 'lucide-react';
+import { Upload as UploadIcon, FileText, AlertCircle, BookOpen, Image as ImageIcon } from 'lucide-react';
 import { processPDF } from '@/lib/pdfProcessor';
+import { processPDFAsImages } from '@/lib/pdfPageRenderer';
 import { generateSampleDocument } from '@/lib/sampleDocument';
 import { setStatus, setCurrentDocumentId, setError } from '@/store/appSlice';
 import { processedDocumentAtom } from '@/state/recoilAtoms';
@@ -18,6 +19,7 @@ const Upload = () => {
   const [error, setLocalError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [ocrProgress, setOCRProgress] = useState<string>('');
+  const [imageMode, setImageMode] = useState(false);
 
   const handleFile = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.pdf')) {
@@ -31,9 +33,18 @@ const Upload = () => {
     dispatch(setStatus('processing'));
 
     try {
-      const doc = await processPDF(file, (progress) => {
-        setOCRProgress(progress);
-      });
+      let doc;
+      if (imageMode) {
+        // Render PDF pages as images (exact layout)
+        doc = await processPDFAsImages(file, (progress) => {
+          setOCRProgress(progress);
+        });
+      } else {
+        // Extract text and build pages
+        doc = await processPDF(file, (progress) => {
+          setOCRProgress(progress);
+        });
+      }
       setDocument(doc);
       dispatch(setCurrentDocumentId(doc.id));
       dispatch(setStatus('ready'));
@@ -46,7 +57,7 @@ const Upload = () => {
       setProcessing(false);
       setOCRProgress('');
     }
-  }, [dispatch, navigate, setDocument]);
+  }, [dispatch, navigate, setDocument, imageMode]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
