@@ -17,6 +17,7 @@ const Upload = () => {
   const [processing, setProcessing] = useState(false);
   const [error, setLocalError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [ocrProgress, setOCRProgress] = useState<string>('');
 
   const handleFile = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.pdf')) {
@@ -26,19 +27,24 @@ const Upload = () => {
 
     setProcessing(true);
     setLocalError(null);
+    setOCRProgress('');
     dispatch(setStatus('processing'));
 
     try {
-      const doc = await processPDF(file);
+      const doc = await processPDF(file, (progress) => {
+        setOCRProgress(progress);
+      });
       setDocument(doc);
       dispatch(setCurrentDocumentId(doc.id));
       dispatch(setStatus('ready'));
+      setOCRProgress('');
       navigate('/experience');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to process PDF.';
       setLocalError(msg);
       dispatch(setError(msg));
       setProcessing(false);
+      setOCRProgress('');
     }
   }, [dispatch, navigate, setDocument]);
 
@@ -87,6 +93,16 @@ const Upload = () => {
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-3/4 mx-auto" />
             <Skeleton className="h-4 w-5/6 mx-auto" />
+            {ocrProgress && (
+              <div className="mt-4 rounded-lg bg-muted p-3 text-left">
+                <p className="text-xs text-muted-foreground animate-pulse font-mono">
+                  {ocrProgress}
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  💡 Scanned PDFs use OCR and may take longer to process
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

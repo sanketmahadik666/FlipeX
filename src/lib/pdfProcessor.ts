@@ -1,6 +1,8 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { ProcessedDocument, Chapter } from '@/state/recoilAtoms';
+import { ocrPool } from './ocrWorkerPool';
+import { preprocessImage } from './imagePreprocessing';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -15,6 +17,8 @@ const MIN_ORPHAN_CHARS = 80;           // min chars on first line of new page to
 const HEADER_FOOTER_MARGIN = 0.08;     // top/bottom 8% of page considered header/footer zone
 const LINE_Y_TOLERANCE = 4;            // px tolerance for same-line detection
 const COLUMN_GAP_THRESHOLD = 100;      // horizontal gap to detect multi-column layout
+const TEXT_THRESHOLD = 50;             // min characters to consider page has text
+const OCR_CANVAS_SCALE = 2.5;          // higher = better OCR accuracy, slower
 
 /* ═══════════════════════════════════════════════
    TEXT EXTRACTION — handles columns, headers/footers, hyphenation
@@ -436,10 +440,97 @@ function buildChapters(paragraphs: string[]): Chapter[] {
 }
 
 /* ═══════════════════════════════════════════════
+   OCR FALLBACK FOR SCANNED PDFS
+   ═══════════════════════════════════════════════ */
+
+/**
+ * Extract text from a PDF page, using OCR fallback if no text layer exists
+ */
+async function extractTextFromPage(
+  page: any,
+  pageNum: number,
+  progressCallback?: (msg: string) => void
+): Promise<string> {
+  // Try text extraction first
+  const textContent = await page.getTextContent();
+  const text = textContent.items
+    .map((item: any) => item.str)
+    .join(' ')
+    .trim();
+  
+  if (text.length > TEXT_THRESHOLD) {
+    progressCallback?.(`Page ${pageNum}: Text extracted (${text.length} chars)`);
+    return text;
+  }
+  
+  // Fallback to OCR for scanned pages
+  progressCallback?.(`Page ${pageNum}: No text layer, performing OCR...`);
+  
+  try {
+    const ocrText = await performOCR(page, pageNum, progressCallback);
+    return ocrText;
+  } catch (error) {
+    console.error(`OCR failed for page ${pageNum}:`, error);
+    progressCallback?.(`Page ${pageNum}: OCR failed, skipping`);
+    return '';
+  }
+}
+
+/**
+ * Perform OCR on a scanned PDF page
+ */
+async function performOCR(
+  page: any,
+  pageNum: number,
+  progressCallback?: (msg: string) => void
+): Promise<string> {
+  // Render page to canvas at high resolution for better OCR
+  const viewport = page.getViewport({ scale: OCR_CANVAS_SCALE });
+  
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  
+  if (!context) {
+    throw new Error('Failed to get canvas context');
+  }
+  
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  
+  // Render PDF page to canvas
+  await page.render({
+    canvasContext: context,
+    viewport,
+  }).promise;
+  
+  progressCallback?.(`Page ${pageNum}: Preprocessing image...`);
+  
+  // Preprocess image for better OCR accuracy
+  const preprocessedImage = preprocessImage(canvas);
+  
+  progressCallback?.(`Page ${pageNum}: Running OCR (may take 10-30 seconds)...`);
+  
+  // Initialize OCR pool if needed
+  if (!ocrPool.initialized) {
+    await ocrPool.initialize();
+  }
+  
+  // Perform OCR
+  const text = await ocrPool.recognize(preprocessedImage);
+  
+  progressCallback?.(`Page ${pageNum}: OCR complete (${text.length} chars)`);
+  
+  return text;
+}
+
+/* ═══════════════════════════════════════════════
    MAIN PROCESSOR
    ═══════════════════════════════════════════════ */
 
-export async function processPDF(file: File): Promise<ProcessedDocument> {
+export async function processPDF(
+  file: File,
+  progressCallback?: (msg: string) => void
+): Promise<ProcessedDocument> {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
