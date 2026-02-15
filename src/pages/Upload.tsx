@@ -86,25 +86,94 @@ const Upload = () => {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
         <div className="w-full max-w-md space-y-6 text-center">
-          <FileText className="mx-auto h-12 w-12 text-primary animate-pulse" />
           <h2 className="font-serif text-2xl font-semibold text-foreground">Processing your book…</h2>
           <p className="text-muted-foreground">Extracting text, detecting chapters, building pages</p>
-          <div className="space-y-3">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-3/4 mx-auto" />
-            <Skeleton className="h-4 w-5/6 mx-auto" />
-            {ocrProgress && (
-              <div className="mt-4 rounded-lg bg-muted p-3 text-left">
-                <p className="text-xs text-muted-foreground animate-pulse font-mono">
+          
+          {/* Circular Progress Display */}
+          <div className="flex justify-center py-6">
+            <div className="relative">
+              <div className="absolute inset-0 bg-primary/5 rounded-full blur-2xl" />
+              <svg
+                className="transform -rotate-90"
+                width="160"
+                height="160"
+                viewBox="0 0 100 100"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                {/* Background Circle */}
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="42"
+                  fill="transparent"
+                  stroke="currentColor"
+                  strokeWidth="8"
+                  className="text-muted/20"
+                  strokeLinecap="round"
+                />
+                
+                {/* Animated Progress Circle */}
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="42"
+                  fill="transparent"
+                  stroke="currentColor"
+                  strokeWidth="8"
+                  strokeDasharray="264 264"
+                  className="text-primary animate-pulse"
+                  strokeLinecap="round"
+                  style={{
+                    animation: 'dash 2s ease-in-out infinite',
+                  }}
+                />
+              </svg>
+              
+              {/* Center Icon */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <FileText className="w-12 h-12 text-primary animate-pulse" />
+              </div>
+            </div>
+          </div>
+
+          {/* OCR Progress Messages */}
+          {ocrProgress && (
+            <div className="mt-4 rounded-lg bg-muted/50 backdrop-blur-sm border border-border p-4 text-left space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5">
+                  <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                </div>
+                <p className="text-sm text-foreground font-mono flex-1">
                   {ocrProgress}
                 </p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  💡 Scanned PDFs use OCR and may take longer to process
-                </p>
               </div>
-            )}
-          </div>
+              
+              <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                <span>💡</span>
+                <p>Scanned PDFs use OCR and may take longer to process</p>
+              </div>
+            </div>
+          )}
+          
+          {/* Processing Steps */}
+          {!ocrProgress && (
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <div className="flex items-center justify-center gap-2">
+                <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" />
+                <span>Analyzing document structure</span>
+              </div>
+            </div>
+          )}
         </div>
+        
+        {/* Add animation keyframes */}
+        <style>{`
+          @keyframes dash {
+            0% { stroke-dashoffset: 264; }
+            50% { stroke-dashoffset: 132; }
+            100% { stroke-dashoffset: 264; }
+          }
+        `}</style>
       </div>
     );
   }

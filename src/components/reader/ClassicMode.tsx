@@ -1,4 +1,4 @@
-import { memo, useMemo, useCallback, useEffect, useState, useRef } from 'react';
+import { memo, useMemo, useCallback, useEffect, useState, useRef, forwardRef } from 'react';
 import { useRecoilState, useRecoilValue } from 'recoil';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-react';
@@ -10,9 +10,9 @@ import { usePageFlipBendSound } from '@/hooks/usePageFlipBendSound';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
 
-const BOOK_ZOOM_MIN = 0.85;
+const BOOK_ZOOM_MIN = 0.5;
 const BOOK_ZOOM_MAX = 1.3;
-const BOOK_ZOOM_STEP = 0.15;
+const BOOK_ZOOM_STEP = 0.1;
 const HASH_PREFIX = 'page';
 
 /* ── Flatten all pages across chapters into a single list ── */
@@ -28,8 +28,10 @@ function flattenPages(doc: any): FlatPage[] {
   const flat: FlatPage[] = [];
   doc.chapters.forEach((chapter: any, chIdx: number) => {
     chapter.pages.forEach((page: any, pIdx: number) => {
+      // pages are string[] arrays directly, not objects with a content property
+      const content = Array.isArray(page) ? page : (page.content || []);
       flat.push({
-        content: page.content,
+        content,
         chapterTitle: chapter.title,
         isChapterStart: pIdx === 0,
         chapterIdx: chIdx,
@@ -41,63 +43,96 @@ function flattenPages(doc: any): FlatPage[] {
 }
 
 /* ── Single page renderer ── */
-const SinglePage = memo(({
-  pageData,
-  fontSize,
-  lineSpacing,
-  side,
-}: {
+/* react-pageflip requires forwardRef for page children */
+const SinglePage = forwardRef<HTMLDivElement, {
   pageData: FlatPage | null;
   fontSize: number;
   lineSpacing: number;
   side: 'left' | 'right' | 'single';
-}) => {
+}>(({ pageData, fontSize, lineSpacing, side }, ref) => {
   if (!pageData) {
     return (
-      <div className={`flex-1 flex flex-col bg-card overflow-hidden relative ${
-        side === 'left' ? 'rounded-l-sm' : side === 'right' ? 'rounded-r-sm' : 'rounded-sm'
-      }`}>
-        <div className="flex-1" />
+      <div ref={ref} className="page-wrapper" style={{ width: '100%', height: '100%' }}>
+        <div
+          className={`w-full h-full flex flex-col bg-[#faf8f5] overflow-hidden relative ${
+            side === 'left' ? 'rounded-l-sm' : side === 'right' ? 'rounded-r-sm' : 'rounded-sm'
+          }`}
+        >
+          <div className="flex-1" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className={`flex-1 flex flex-col bg-card overflow-hidden relative ${
-      side === 'left' ? 'rounded-l-sm' : side === 'right' ? 'rounded-r-sm' : 'rounded-sm'
-    }`}>
-      {/* Spine shadow */}
-      {side === 'left' && (
-        <div className="absolute top-0 bottom-0 right-0 w-6 pointer-events-none"
-          style={{ background: 'linear-gradient(to left, hsl(var(--foreground) / 0.06), transparent)' }}
-        />
-      )}
-      {side === 'right' && (
-        <div className="absolute top-0 bottom-0 left-0 w-6 pointer-events-none"
-          style={{ background: 'linear-gradient(to right, hsl(var(--foreground) / 0.06), transparent)' }}
-        />
-      )}
-
-      <div className={`flex-1 flex flex-col py-8 ${
-        side === 'single' ? 'px-8' : side === 'left' ? 'pl-8 pr-6' : 'pr-8 pl-6'
-      } ${
-        'px-10 md:px-14'
-      } md:py-10`}>
-        {pageData.isChapterStart && (
-          <h2 className="mb-4 text-center font-serif text-lg font-semibold tracking-wide text-foreground/60 uppercase">
-            {pageData.chapterTitle}
-          </h2>
+    <div ref={ref} className="page-wrapper" style={{ width: '100%', height: '100%' }}>
+      <div
+        className={`w-full h-full flex flex-col overflow-hidden relative ${
+          side === 'left' ? 'rounded-l-sm' : side === 'right' ? 'rounded-r-sm' : 'rounded-sm'
+        }`}
+        style={{ backgroundColor: '#faf8f5' }}
+      >
+        {/* Spine shadow */}
+        {side === 'left' && (
+          <div
+            className="absolute top-0 bottom-0 right-0 w-8 pointer-events-none z-10"
+            style={{ background: 'linear-gradient(to left, rgba(0,0,0,0.08), transparent)' }}
+          />
         )}
+        {side === 'right' && (
+          <div
+            className="absolute top-0 bottom-0 left-0 w-8 pointer-events-none z-10"
+            style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.08), transparent)' }}
+          />
+        )}
+
+        {/* Page content area - strictly contained within page height */}
         <div
-          className="flex-1 font-serif text-foreground/90 overflow-hidden"
-          style={{ fontSize: `${fontSize}px`, lineHeight: lineSpacing }}
+          className={`flex-1 flex flex-col overflow-hidden ${
+            side === 'single' ? 'px-6 py-6' : side === 'left' ? 'pl-8 pr-6 py-6' : 'pr-8 pl-6 py-6'
+          }`}
+          style={{ minHeight: 0 }}
         >
-          {pageData.content?.map((paragraph, i) => (
-            <p key={i} className="mb-3 text-justify">
-              {paragraph}
-            </p>
-          ))}
+          {pageData.isChapterStart && (
+            <h2 className="mb-4 text-center font-serif text-base font-semibold tracking-widest uppercase"
+              style={{ color: 'rgba(60,50,40,0.55)' }}
+            >
+              {pageData.chapterTitle}
+            </h2>
+          )}
+          <div
+            className="flex-1 font-serif overflow-hidden"
+            style={{
+              fontSize: `${fontSize}px`,
+              lineHeight: lineSpacing,
+              color: 'rgba(30,25,20,0.85)',
+              minHeight: 0,
+            }}
+          >
+            {pageData.content?.map((paragraph, i) => (
+              <p key={i} className="mb-2.5 text-justify leading-relaxed" style={{ wordBreak: 'break-word' }}>
+                {paragraph}
+              </p>
+            ))}
+          </div>
+
+          {/* Page number at bottom */}
+          <div className="mt-auto pt-2 text-center">
+            <span className="text-xs font-serif" style={{ color: 'rgba(60,50,40,0.35)' }}>
+              {pageData.chapterIdx * 10 + pageData.pageIdx + 1}
+            </span>
+          </div>
         </div>
+
+        {/* Subtle page edge effect */}
+        <div
+          className="absolute top-0 right-0 w-[3px] h-full pointer-events-none"
+          style={{
+            background: side === 'left'
+              ? 'linear-gradient(to left, rgba(0,0,0,0.04), transparent)'
+              : 'none',
+          }}
+        />
       </div>
     </div>
   );
@@ -105,25 +140,22 @@ const SinglePage = memo(({
 
 SinglePage.displayName = 'SinglePage';
 
-/* ── Main component ── */
 /** Parse hash #page3 or #3 into 0-based spread index, or null if invalid. */
 function spreadIndexFromHash(): number | null {
-  const hash = window.location.hash.slice(1);
-  if (!hash) return null;
-  const afterPrefix = hash.toLowerCase().startsWith(HASH_PREFIX)
-    ? hash.slice(HASH_PREFIX.length).replace(/^[=\s]+/, '')
-    : hash;
-  const n = parseInt(afterPrefix, 10);
-  if (!Number.isFinite(n) || n < 1) return null;
-  return n - 1; // 1-based page number -> 0-based spread index
+  const raw = window.location.hash.replace('#', '').trim();
+  if (!raw) return null;
+  const numStr = raw.replace(HASH_PREFIX, '');
+  const n = parseInt(numStr, 10);
+  if (Number.isNaN(n) || n < 1) return null;
+  return n - 1;
 }
 
 /** Write current spread to hash (1-based page number). */
 function writeHash(spreadIndex: number) {
   const pageNum = spreadIndex + 1;
-  const newHash = `#${HASH_PREFIX}${pageNum}`;
-  if (window.location.hash !== newHash) {
-    window.history.replaceState(null, '', newHash);
+  const hash = `#${HASH_PREFIX}${pageNum}`;
+  if (window.location.hash !== hash) {
+    window.history.replaceState(null, '', hash);
   }
 }
 
@@ -136,18 +168,48 @@ const ClassicMode = memo(() => {
   const bookZoom = useAtomValue(bookZoomAtom);
   const setBookZoom = useSetAtom(bookZoomAtom);
   const playFlip = usePageFlipSound();
-  const { startBend, updateBend, endBend } = usePageFlipBendSound();
+  const { startBend, endBend } = usePageFlipBendSound();
   const isMobile = useIsMobile();
 
   const [spreadIndex, setSpreadIndex] = useState(0);
   const bookRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ w: 800, h: 500 });
 
   /* Flatten all pages */
   const allPages = useMemo(() => (doc ? flattenPages(doc) : []), [doc]);
 
-  /* Calculate dimensions */
-  const pageWidth = isMobile ? 400 : 480;
-  const pageHeight = isMobile ? Math.round(pageWidth * 4 / 3) : Math.round(pageWidth * 4 / 3);
+  /* Dynamically calculate page dimensions based on container */
+  useEffect(() => {
+    const measure = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setContainerSize({ w: rect.width, h: rect.height });
+      }
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+
+  /* Calculate page dimensions to fit container */
+  const { pageWidth, pageHeight } = useMemo(() => {
+    const availW = containerSize.w - 64; // padding
+    const availH = containerSize.h - 32; // padding
+
+    if (isMobile) {
+      // Single page mode on mobile
+      const pw = Math.min(availW - 16, 420);
+      const ph = Math.min(availH, Math.round(pw * 1.4));
+      return { pageWidth: pw, pageHeight: ph };
+    }
+
+    // Two-page spread: each page is half the available width
+    const halfW = Math.floor((availW - 8) / 2); // -8 for spine gap
+    const pw = Math.min(halfW, 440);
+    const ph = Math.min(availH, Math.round(pw * 1.35));
+    return { pageWidth: pw, pageHeight: ph };
+  }, [containerSize, isMobile]);
 
   /* Event handler: page flip */
   const handleFlip = useCallback((e: any) => {
@@ -155,14 +217,14 @@ const ClassicMode = memo(() => {
     const newSpreadIndex = isMobile ? pageNum : Math.floor(pageNum / 2);
     setSpreadIndex(newSpreadIndex);
     writeHash(newSpreadIndex);
-    
+
     // Update Recoil atoms for chapter/page tracking
     const page = allPages[pageNum];
     if (page) {
       setChapterIdx(page.chapterIdx);
       setPageIdx(page.pageIdx);
     }
-    
+
     playFlip();
   }, [isMobile, allPages, setChapterIdx, setPageIdx, playFlip]);
 
@@ -209,7 +271,7 @@ const ClassicMode = memo(() => {
   const navigate = useCallback((dir: 'prev' | 'next') => {
     if (!bookRef.current) return;
     const pageFlip = bookRef.current.pageFlip();
-    
+
     if (dir === 'next') {
       pageFlip.flipNext('bottom');
     } else {
@@ -242,16 +304,16 @@ const ClassicMode = memo(() => {
     if (canZoomOut) setBookZoom((z) => Math.max(BOOK_ZOOM_MIN, z - BOOK_ZOOM_STEP));
   }, [canZoomOut, setBookZoom]);
 
-  /* Calculate current page/spread for display */
+  /* Calculate current page for display */
   const currentPageIndex = bookRef.current?.pageFlip()?.getCurrentPageIndex() ?? 0;
-  const displayPageNum = isMobile 
-    ? currentPageIndex + 1 
-    : currentPageIndex % 2 === 0 
-      ? `${currentPageIndex + 1}–${Math.min(currentPageIndex + 2, allPages.length)}` 
+  const displayPageNum = isMobile
+    ? currentPageIndex + 1
+    : currentPageIndex % 2 === 0
+      ? `${currentPageIndex + 1}–${Math.min(currentPageIndex + 2, allPages.length)}`
       : currentPageIndex + 1;
 
   const isFirst = currentPageIndex === 0;
-  const isLast = currentPageIndex >= allPages.length - 1;
+  const isLast = currentPageIndex >= allPages.length - (isMobile ? 1 : 2);
 
   if (!doc || allPages.length === 0) {
     return (
@@ -262,9 +324,9 @@ const ClassicMode = memo(() => {
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-2 md:px-4">
+    <div className="flex flex-1 flex-col items-center justify-center px-2 md:px-4 min-h-0">
       {/* Action bar: Prev | Zoom- | Page X of Y | Zoom+ | Next */}
-      <div className="w-full flex items-center justify-center gap-2 py-3">
+      <div className="w-full flex items-center justify-center gap-2 py-2 shrink-0">
         <Button
           variant="ghost"
           size="icon"
@@ -312,7 +374,8 @@ const ClassicMode = memo(() => {
 
       {/* Book surface container */}
       <div
-        className="flex flex-1 items-center justify-center w-full min-h-0 rounded-2xl mx-2 md:mx-4 my-2 md:my-4 p-4 md:p-8"
+        ref={containerRef}
+        className="flex flex-1 items-center justify-center w-full min-h-0 rounded-2xl mx-2 md:mx-4 my-1 md:my-2 p-4 md:p-6"
         style={{
           background: 'linear-gradient(165deg, hsl(var(--muted) / 0.5) 0%, hsl(var(--muted) / 0.25) 50%, hsl(var(--muted) / 0.4) 100%)',
           boxShadow: 'inset 0 1px 2px hsl(var(--foreground) / 0.04), 0 1px 0 hsl(var(--foreground) / 0.03)',
@@ -321,7 +384,7 @@ const ClassicMode = memo(() => {
       >
         {/* Book with zoom */}
         <div
-          className="flex flex-1 items-center justify-center w-full"
+          className="flex items-center justify-center"
           style={{
             transform: `scale(${bookZoom})`,
             transformOrigin: 'center center',
@@ -331,16 +394,16 @@ const ClassicMode = memo(() => {
           <HTMLFlipBook
             width={pageWidth}
             height={pageHeight}
-            size="stretch"
-            minWidth={300}
-            maxWidth={pageWidth}
-            minHeight={Math.round(300 * 4 / 3)}
-            maxHeight={pageHeight}
+            size="fixed"
+            minWidth={200}
+            maxWidth={600}
+            minHeight={300}
+            maxHeight={900}
             showCover={false}
             flippingTime={520}
             drawShadow={true}
             maxShadowOpacity={0.42}
-            usePortrait={true}
+            usePortrait={isMobile}
             mobileScrollSupport={true}
             autoSize={false}
             onFlip={handleFlip}
@@ -349,14 +412,13 @@ const ClassicMode = memo(() => {
             className="book-container"
           >
             {allPages.map((page, idx) => (
-              <div key={idx} className="page-content">
-                <SinglePage
-                  pageData={page}
-                  fontSize={fontSize}
-                  lineSpacing={lineSpacing}
-                  side={isMobile ? 'single' : (idx % 2 === 0 ? 'left' : 'right')}
-                />
-              </div>
+              <SinglePage
+                key={idx}
+                pageData={page}
+                fontSize={fontSize}
+                lineSpacing={lineSpacing}
+                side={isMobile ? 'single' : (idx % 2 === 0 ? 'left' : 'right')}
+              />
             ))}
           </HTMLFlipBook>
         </div>
