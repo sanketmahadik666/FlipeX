@@ -8,3 +8,6 @@ export const lineSpacingAtom = atom<number>(1.8);
 export const readingModeAtom = atom<ReadingMode>('classic');
 export const readingThemeAtom = atom<ReadingTheme>('light');
 export const soundEnabledAtom = atom<boolean>(true);
+
+/** Classic book mode: scale of the book (0.85 = smaller, 1.3 = larger). */
+export const bookZoomAtom = atom<number>(1);
