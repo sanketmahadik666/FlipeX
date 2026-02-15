@@ -8,13 +8,13 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
    CONFIGURATION
    ═══════════════════════════════════════════════ */
 
-const MAX_CHARS_PER_PAGE = 800;
-const MIN_PARAGRAPH_LENGTH = 15;       // discard very short fragments
-const MIN_WIDOW_CHARS = 80;            // min chars on last page to avoid widow
-const MIN_ORPHAN_CHARS = 80;           // min chars on first line of new page to avoid orphan
-const HEADER_FOOTER_MARGIN = 0.08;     // top/bottom 8% of page considered header/footer zone
-const LINE_Y_TOLERANCE = 4;            // px tolerance for same-line detection
-const COLUMN_GAP_THRESHOLD = 100;      // horizontal gap to detect multi-column layout
+const MAX_CHARS_PER_PAGE = 2000;           // Increased for more natural content flow
+const MIN_PARAGRAPH_LENGTH = 10;           // Keep more content fragments
+const MIN_WIDOW_CHARS = 100;               // Adjusted for better page balance
+const MIN_ORPHAN_CHARS = 100;              // Adjusted for better page balance
+const HEADER_FOOTER_MARGIN = 0.10;         // Slightly wider margin to capture headers
+const LINE_Y_TOLERANCE = 3;                // Tighter tolerance for line detection
+const COLUMN_GAP_THRESHOLD = 50;           // Lower threshold for multi-column detection
 
 /* ═══════════════════════════════════════════════
    TEXT EXTRACTION — handles columns, headers/footers, hyphenation
@@ -27,18 +27,20 @@ interface TextItem {
   width: number;
   height: number;
   fontName: string;
+  dir?: string; // Direction for RTL support
 }
 
 function extractTextItems(content: any): TextItem[] {
   return content.items
-    .filter((item: any) => item.str && item.str.trim().length > 0)
+    .filter((item: any) => item.str && item.str.length > 0)
     .map((item: any) => ({
       str: item.str,
       x: item.transform[4],
       y: item.transform[5],
       width: item.width || 0,
-      height: item.height || item.transform[0] || 12,
+      height: Math.abs(item.transform[0]) || 12,
       fontName: item.fontName || '',
+      dir: item.dir,
     }));
 }
 
@@ -46,106 +48,101 @@ function extractTextItems(content: any): TextItem[] {
 function isInHeaderFooterZone(item: TextItem, pageHeight: number): boolean {
   if (pageHeight <= 0) return false;
   const normalizedY = item.y / pageHeight;
+  // Use a more nuanced check for top/bottom zones
   return normalizedY < HEADER_FOOTER_MARGIN || normalizedY > (1 - HEADER_FOOTER_MARGIN);
 }
 
 /** Detect page numbers (standalone short numbers) */
 function isPageNumber(text: string): boolean {
   const trimmed = text.trim();
-  return /^\d{1,4}$/.test(trimmed) || /^[-–—]\s*\d{1,4}\s*[-–—]$/.test(trimmed) ||
-    /^page\s+\d+/i.test(trimmed) || /^\d{1,4}\s*of\s*\d{1,4}$/i.test(trimmed);
+  if (trimmed.length > 15) return false;
+  return /^\d{1,4}$/.test(trimmed) || 
+         /^[-–—]\s*\d{1,4}\s*[-–—]$/.test(trimmed) ||
+         /^page\s+\d+/i.test(trimmed) || 
+         /^\d{1,4}\s*of\s*\d{1,4}$/i.test(trimmed) ||
+         /^\[\d+\]$/.test(trimmed);
 }
 
 /** Detect if items form multiple columns by analyzing x-position clusters */
 function detectColumns(items: TextItem[]): TextItem[][] {
-  if (items.length < 4) return [items];
+  if (items.length < 10) return [items];
 
-  // Collect unique x start positions (rounded)
-  const xStarts = items.map(i => Math.round(i.x / 10) * 10);
-  const xCounts = new Map<number, number>();
-  xStarts.forEach(x => xCounts.set(x, (xCounts.get(x) || 0) + 1));
-
-  // Find dominant x positions (appearing at least 3 times)
-  const dominantXs = [...xCounts.entries()]
-    .filter(([, count]) => count >= 3)
-    .map(([x]) => x)
-    .sort((a, b) => a - b);
-
-  // Check if there are clearly separated column starts
-  if (dominantXs.length >= 2) {
-    const gaps: number[] = [];
-    for (let i = 1; i < dominantXs.length; i++) {
-      gaps.push(dominantXs[i] - dominantXs[i - 1]);
-    }
-    const hasColumnGap = gaps.some(g => g > COLUMN_GAP_THRESHOLD);
-
-    if (hasColumnGap) {
-      // Split into columns
-      const midX = dominantXs[0] + gaps[0] / 2;
-      const leftCol = items.filter(i => i.x < midX).sort((a, b) => b.y - a.y || a.x - b.x);
-      const rightCol = items.filter(i => i.x >= midX).sort((a, b) => b.y - a.y || a.x - b.x);
-      return [leftCol, rightCol];
+  // Group by x-position clusters
+  const clusters: { x: number; items: TextItem[] }[] = [];
+  const sortedByX = [...items].sort((a, b) => a.x - b.x);
+  
+  let currentCluster: TextItem[] = [sortedByX[0]];
+  for (let i = 1; i < sortedByX.length; i++) {
+    const item = sortedByX[i];
+    const prevItem = sortedByX[i-1];
+    if (item.x - (prevItem.x + prevItem.width) > COLUMN_GAP_THRESHOLD) {
+      clusters.push({ x: currentCluster[0].x, items: currentCluster });
+      currentCluster = [item];
+    } else {
+      currentCluster.push(item);
     }
   }
+  clusters.push({ x: currentCluster[0].x, items: currentCluster });
 
-  return [items];
+  // Only return multiple columns if they are significant
+  const significantClusters = clusters.filter(c => c.items.length > items.length * 0.1);
+  
+  if (significantClusters.length >= 2) {
+    return significantClusters.map(c => 
+      c.items.sort((a, b) => b.y - a.y || a.x - b.x)
+    );
+  }
+
+  return [items.sort((a, b) => b.y - a.y || a.x - b.x)];
 }
 
 /** Group items into lines, rejoin hyphenated words */
 function itemsToLines(items: TextItem[]): string[] {
   if (items.length === 0) return [];
 
-  // Sort top-to-bottom, left-to-right
-  const sorted = [...items].sort((a, b) => {
-    const yDiff = b.y - a.y;
-    if (Math.abs(yDiff) > LINE_Y_TOLERANCE) return yDiff;
-    return a.x - b.x;
-  });
-
   const lines: string[] = [];
-  let currentLine = sorted[0].str;
-  let lastY = sorted[0].y;
-  let lastEndX = sorted[0].x + sorted[0].width;
+  let currentLine = items[0].str;
+  let lastY = items[0].y;
+  let lastEndX = items[0].x + items[0].width;
 
-  for (let i = 1; i < sorted.length; i++) {
-    const item = sorted[i];
+  for (let i = 1; i < items.length; i++) {
+    const item = items[i];
     const isNewLine = Math.abs(item.y - lastY) > LINE_Y_TOLERANCE;
 
     if (isNewLine) {
       if (currentLine.trim()) lines.push(currentLine.trim());
       currentLine = item.str;
     } else {
-      // Same line — detect word spacing
       const gap = item.x - lastEndX;
-      if (gap > item.height * 0.3 && !currentLine.endsWith(' ') && !item.str.startsWith(' ')) {
+      // Smarter spacing: if gap is small and we're not already ending/starting with space
+      if (gap > 1 && !currentLine.endsWith(' ') && !item.str.startsWith(' ')) {
         currentLine += ' ';
       }
       currentLine += item.str;
     }
     lastY = item.y;
-    lastEndX = item.x + (item.width || item.str.length * 5);
+    lastEndX = item.x + item.width;
   }
   if (currentLine.trim()) lines.push(currentLine.trim());
 
-  // Rejoin hyphenated words across lines
+  // Better hyphenation handling
   const rejoined: string[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.endsWith('-') && i + 1 < lines.length) {
-      // Remove hyphen and join with next line's first word
+    let line = lines[i];
+    while (line.endsWith('-') && i + 1 < lines.length) {
       const nextLine = lines[i + 1];
-      const nextWords = nextLine.split(/\s+/);
-      const firstWord = nextWords.shift() || '';
-      const joined = line.slice(0, -1) + firstWord;
-      rejoined.push(joined + (nextWords.length ? '' : ''));
-      if (nextWords.length) {
-        lines[i + 1] = nextWords.join(' ');
+      const match = nextLine.match(/^(\S+)(.*)/);
+      if (match) {
+        line = line.slice(0, -1) + match[1];
+        lines[i + 1] = match[2].trim();
+        if (!lines[i + 1]) {
+          i++;
+        }
       } else {
-        i++; // skip next line entirely
+        break;
       }
-    } else {
-      rejoined.push(line);
     }
+    rejoined.push(line);
   }
 
   return rejoined;
@@ -201,10 +198,9 @@ function linesToParagraphs(lines: string[]): string[] {
   const paragraphs: string[] = [];
   let current = '';
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      // Empty line = paragraph break
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) {
       if (current.trim()) {
         paragraphs.push(current.trim());
         current = '';
@@ -212,30 +208,46 @@ function linesToParagraphs(lines: string[]): string[] {
       continue;
     }
 
-    if (isPageNumber(trimmed)) continue;
+    if (isPageNumber(line)) continue;
 
-    // Heuristics for paragraph break:
-    // - Line is short (likely end of paragraph) followed by a new thought
-    // - Line starts with uppercase after a sentence-ending previous line
-    const prevEndsWithPeriod = /[.!?:]\s*$/.test(current);
-    const startsUppercase = /^[A-Z"'"'(]/.test(trimmed);
-    const prevLineShort = current.split('\n').pop()?.length || 0;
+    // Detect if line is likely a header
+    const isHeader = i < lines.length - 1 && 
+                     line.length < 60 && 
+                     /^[A-Z][^a-z]*$/.test(line) && 
+                     !/[.!?]$/.test(line);
 
-    if (current && prevEndsWithPeriod && startsUppercase && prevLineShort < 70) {
+    if (isHeader && current.trim()) {
       paragraphs.push(current.trim());
-      current = trimmed;
-    } else if (current) {
-      // Continue current paragraph — add space if needed
-      const needsSpace = !current.endsWith(' ') && !trimmed.startsWith(' ');
-      current += (needsSpace ? ' ' : '') + trimmed;
+      current = line;
+      paragraphs.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    if (current) {
+      // Heuristic for paragraph continuation:
+      // If previous line doesn't end with sentence terminator, or current line doesn't start with uppercase
+      const prevLine = current.trim();
+      const endsWithSentenceTerminator = /[.!?:"'”]$/.test(prevLine);
+      const startsWithLowercase = /^[a-z]/.test(line);
+      const isListItem = /^(\d+\.|\*|-|•)\s+/.test(line);
+
+      if ((!endsWithSentenceTerminator || startsWithLowercase) && !isListItem) {
+        current += ' ' + line;
+      } else {
+        paragraphs.push(current.trim());
+        current = line;
+      }
     } else {
-      current = trimmed;
+      current = line;
     }
   }
 
   if (current.trim()) paragraphs.push(current.trim());
 
-  return paragraphs.filter(p => p.length >= MIN_PARAGRAPH_LENGTH);
+  return paragraphs
+    .map(p => p.replace(/\s+/g, ' ').trim())
+    .filter(p => p.length >= MIN_PARAGRAPH_LENGTH);
 }
 
 /* ═══════════════════════════════════════════════
@@ -377,9 +389,12 @@ function applyWidowOrphanFix(pages: string[][]): string[][] {
    ═══════════════════════════════════════════════ */
 
 function detectChapterTitle(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length > 200) return false;
+
   const patterns = [
     /^chapter\s+\d+/i,
-    /^chapter\s+[ivxlcdm]+/i,   // roman numerals
+    /^chapter\s+[ivxlcdm]+/i,
     /^part\s+\d+/i,
     /^part\s+[ivxlcdm]+/i,
     /^section\s+\d+/i,
@@ -387,7 +402,7 @@ function detectChapterTitle(text: string): boolean {
     /^CHAPTER\s+/,
     /^PART\s+/,
     /^\d+\.\s+[A-Z]/,
-    /^[IVXLCDM]+\.\s+/,         // "III. Title"
+    /^[IVXLCDM]+\.\s+/,
     /^prologue$/i,
     /^epilogue$/i,
     /^introduction$/i,
@@ -395,8 +410,9 @@ function detectChapterTitle(text: string): boolean {
     /^foreword$/i,
     /^appendix/i,
     /^conclusion$/i,
+    /^[A-Z\s]{5,50}$/, // All caps short titles
   ];
-  return patterns.some((p) => p.test(text.trim()));
+  return patterns.some((p) => p.test(trimmed));
 }
 
 function buildChapters(paragraphs: string[]): Chapter[] {
@@ -467,17 +483,14 @@ export async function processPDF(file: File): Promise<ProcessedDocument> {
   for (const { items, pageHeight } of pageDataCache) {
     // Filter out header/footer zone items
     let filtered = items.filter(item => {
+      const normalizedText = item.str.replace(/\d+/g, '#').trim().toLowerCase();
       if (isInHeaderFooterZone(item, pageHeight)) {
-        const normalizedText = item.str.replace(/\d+/g, '#').trim().toLowerCase();
         if (repeatingPatterns.has(normalizedText) || isPageNumber(item.str)) {
           return false;
         }
       }
       return true;
     });
-
-    // Filter standalone page numbers
-    filtered = filtered.filter(item => !isPageNumber(item.str.trim()));
 
     // Detect columns and process each
     const columns = detectColumns(filtered);
@@ -486,8 +499,10 @@ export async function processPDF(file: File): Promise<ProcessedDocument> {
       allLines.push(...lines);
     }
 
-    // Page boundary marker
-    allLines.push('');
+    // Explicit page separator for paragraph detection
+    if (allLines.length > 0 && allLines[allLines.length - 1] !== '') {
+      allLines.push('');
+    }
   }
 
   const paragraphs = linesToParagraphs(allLines);
