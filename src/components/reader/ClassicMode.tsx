@@ -147,7 +147,7 @@ const ClassicMode = memo(() => {
   const [flipProgress, setFlipProgress] = useState(0);
   const animFrameRef = useRef<number>();
 
-  const FLIP_DURATION = 550;
+  const FLIP_DURATION = 620;
 
   /* Flatten all pages */
   const allPages = useMemo(() => (doc ? flattenPages(doc) : []), [doc]);
@@ -185,7 +185,13 @@ const ClassicMode = memo(() => {
   const leftPageNum = isMobile ? spreadIndex + 1 : spreadIndex * 2 + 1;
   const rightPageNum = isMobile ? null : spreadIndex * 2 + 2;
 
-  const ease = (t: number) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  /* Smoother ease: soft ease-in-out (smooth start and end, fluid through the middle). */
+  const ease = (t: number) => {
+    const s = 1.7; // smoothness: higher = gentler acceleration
+    return t <= 0 ? 0 : t >= 1 ? 1 : t < 0.5
+      ? 0.5 * Math.pow(t * 2, s)
+      : 1 - 0.5 * Math.pow(2 - t * 2, s);
+  };
 
   const animateFlip = useCallback((startTime: number) => {
     const tick = (now: number) => {
@@ -254,20 +260,31 @@ const ClassicMode = memo(() => {
   /* Lift toward viewer at mid-flip (translateZ). */
   const liftZ = Math.sin(flipProgress * Math.PI) * 12;
 
-  /* Middle bend: page curves like real paper (rotateX peaks when page is vertical). */
-  const bendDegrees = 22;
+  /* Middle bend: page curves like real paper; more angular rotation through the flip. */
+  const bendDegrees = 28;
   const bendX = Math.sin(flipProgress * Math.PI) * bendDegrees;
 
   const flippingPageData = flipDir === 'next'
     ? prevSpread?.[1]
     : nextSpread?.[0];
 
-  /* Transform: first translate (arc + lift in screen space), then bend, then flip. */
-  const flippingStyle: React.CSSProperties = prefersReducedMotion ? {} : {
-    transform: `translateY(${arcY}px) translateZ(${liftZ}px) rotateX(${bendX}deg) rotateY(${flipRotation}deg)`,
-    transformOrigin: flipDir === 'next' ? 'left center' : 'right center',
+  /* Page thickness (visible edge when flipping). */
+  const pageThicknessPx = 24;
+
+  /* Elliptical bend: each colinear point follows ellipse. N strips, strip i has rotateY = flipRotation * sqrt(1 - (i/(N-1))²). */
+  const ELLIPTICAL_STRIPS = 8;
+  const ellipticalAngles: number[] = [];
+  for (let i = 0; i < ELLIPTICAL_STRIPS; i++) {
+    const t = ELLIPTICAL_STRIPS > 1 ? i / (ELLIPTICAL_STRIPS - 1) : 0;
+    const f = Math.sqrt(1 - t * t); // quarter ellipse: spine leads, outer edge lags
+    ellipticalAngles.push(flipRotation * f);
+  }
+
+  /* Container: arc, lift, bend (rotateX); no rotateY here — each strip gets its own rotateY. */
+  const flippingContainerStyle: React.CSSProperties = prefersReducedMotion ? {} : {
+    transform: `translateY(${arcY}px) translateZ(${liftZ}px) rotateX(${bendX}deg)`,
+    transformOrigin: 'center center',
     transformStyle: 'preserve-3d',
-    backfaceVisibility: 'hidden' as const,
     willChange: 'transform',
     zIndex: 10,
     boxShadow: `${flipDir === 'next' ? '-' : ''}${shadowIntensity * 25}px 0 ${shadowIntensity * 35}px -8px hsl(var(--foreground) / ${shadowIntensity})`,
@@ -431,34 +448,84 @@ const ClassicMode = memo(() => {
           )}
         </div>
 
-        {/* 3D flipping page overlay */}
+        {/* 3D flipping page overlay: elliptical bend (each strip rotates by ellipse curve). */}
         {isAnimating && flipDir !== 'none' && flippingPageData && !prefersReducedMotion && (
           <div
-            className={`absolute top-0 bottom-0 overflow-hidden ${
+            className={`absolute top-0 bottom-0 overflow-visible ${
               isAntique ? '' : 'bg-card'
             } ${isMobile ? 'left-0 right-0 rounded-sm' : flipDir === 'next' ? 'right-0 rounded-r-sm' : 'left-0 rounded-l-sm'}`}
             style={{
-              ...flippingStyle,
+              ...flippingContainerStyle,
               width: isMobile ? '100%' : '50%',
               ...(flipDir === 'next' && !isMobile ? { left: '50%', right: 'auto' } : {}),
               ...(flipDir === 'prev' && !isMobile ? { right: '50%', left: 'auto' } : {}),
               ...(isAntique ? { background: 'linear-gradient(180deg, hsl(42,38%,92%) 0%, hsl(38,35%,88%) 100%)' } : {}),
+              transformOrigin: flipDir === 'next' ? 'left center' : 'right center',
             }}
           >
-            {/* Fold shadow */}
-            <div className="absolute inset-0 pointer-events-none" style={{
-              background: flipDir === 'next'
-                ? `linear-gradient(to right, hsl(var(--foreground) / ${shadowIntensity * 0.15}), transparent 40%)`
-                : `linear-gradient(to left, hsl(var(--foreground) / ${shadowIntensity * 0.15}), transparent 40%)`,
-              zIndex: 5,
-            }} />
-            <SinglePage
-              pageData={flippingPageData}
-              fontSize={fontSize}
-              lineSpacing={lineSpacing}
-              side={isMobile ? 'single' : flipDir === 'next' ? 'right' : 'left'}
-              antique={isAntique}
-            />
+            <div className="absolute inset-0 overflow-hidden" style={{ transformStyle: 'preserve-3d' }}>
+              {/* Page thickness strip (spine edge; visible during flip) */}
+              <div
+                className="absolute top-0 bottom-0 pointer-events-none"
+                style={{
+                  ...(flipDir === 'next' ? { left: 0 } : { right: 0 }),
+                  width: pageThicknessPx,
+                  transform: flipDir === 'next' ? 'rotateY(-90deg)' : 'rotateY(90deg)',
+                  transformOrigin: flipDir === 'next' ? 'left center' : 'right center',
+                  background: isAntique
+                    ? 'linear-gradient(180deg, hsl(38,25%,78%) 0%, hsl(35,22%,72%) 50%, hsl(38,25%,76%) 100%)'
+                    : 'linear-gradient(180deg, hsl(var(--muted-foreground) / 0.2) 0%, hsl(var(--foreground) / 0.12) 50%, hsl(var(--muted-foreground) / 0.18) 100%)',
+                  boxShadow: 'inset 0 0 6px hsl(0,0%,0% / 0.08)',
+                  zIndex: 0,
+                }}
+              />
+              {/* Elliptical strips: each colinear point follows sqrt(1-t²) rotation. */}
+              {Array.from({ length: ELLIPTICAL_STRIPS }, (_, i) => {
+                const angle = ellipticalAngles[i];
+                const pct = 100 / ELLIPTICAL_STRIPS;
+                const isNext = flipDir === 'next';
+                return (
+                  <div
+                    key={i}
+                    className="absolute top-0 bottom-0 overflow-hidden"
+                    style={{
+                      ...(isNext ? { left: `${i * pct}%` } : { right: `${i * pct}%` }),
+                      width: `${pct}%`,
+                      transform: `rotateY(${angle}deg)`,
+                      transformOrigin: isNext ? 'left center' : 'right center',
+                      transformStyle: 'preserve-3d',
+                      backfaceVisibility: 'hidden',
+                      zIndex: 1,
+                    }}
+                  >
+                    <div
+                      className="absolute top-0 bottom-0 h-full"
+                      style={{
+                        width: `${ELLIPTICAL_STRIPS * 100}%`,
+                        ...(isNext
+                          ? { left: 0, marginLeft: `-${i * 100}%` }
+                          : { right: 0, marginRight: `-${i * 100}%` }),
+                      }}
+                    >
+                      <SinglePage
+                        pageData={flippingPageData}
+                        fontSize={fontSize}
+                        lineSpacing={lineSpacing}
+                        side={isMobile ? 'single' : isNext ? 'right' : 'left'}
+                        antique={isAntique}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Fold shadow */}
+              <div className="absolute inset-0 pointer-events-none" style={{
+                background: flipDir === 'next'
+                  ? `linear-gradient(to right, hsl(var(--foreground) / ${shadowIntensity * 0.15}), transparent 40%)`
+                  : `linear-gradient(to left, hsl(var(--foreground) / ${shadowIntensity * 0.15}), transparent 40%)`,
+                zIndex: 5,
+              }} />
+            </div>
           </div>
         )}
 
