@@ -3,7 +3,7 @@ import { useRecoilState, useRecoilValue } from 'recoil';
 import { useAtomValue } from 'jotai';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { processedDocumentAtom, currentChapterIndexAtom, currentPageIndexAtom } from '@/state/recoilAtoms';
-import { fontSizeAtom, lineSpacingAtom } from '@/state/jotaiAtoms';
+import { fontSizeAtom, lineSpacingAtom, readingThemeAtom } from '@/state/jotaiAtoms';
 import { usePageFlipSound } from '@/hooks/usePageFlipSound';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -36,41 +36,70 @@ function flattenPages(doc: any): FlatPage[] {
   return flat;
 }
 
+/* ── Parchment texture (subtle noise for antique pages) ── */
+const parchmentNoise = `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E")`;
+
 /* ── Single page renderer ── */
 const SinglePage = memo(({
   pageData,
   fontSize,
   lineSpacing,
   side,
+  antique,
 }: {
   pageData: FlatPage | null;
   fontSize: number;
   lineSpacing: number;
   side: 'left' | 'right' | 'single';
+  antique?: boolean;
 }) => {
+  const pageBg = antique
+    ? { backgroundImage: `linear-gradient(180deg, hsl(42,38%,92%) 0%, hsl(38,35%,88%) 100%), ${parchmentNoise}` }
+    : undefined;
+  const pageClass = antique ? 'antique-page' : '';
+  const textColor = antique ? 'text-[hsl(28,20%,22%)]' : 'text-foreground/90';
+  const titleColor = antique ? 'text-[hsl(28,25%,35%)]' : 'text-foreground/60';
+
   if (!pageData) {
     return (
-      <div className={`flex-1 flex flex-col bg-card overflow-hidden relative ${
-        side === 'left' ? 'rounded-l-sm' : side === 'right' ? 'rounded-r-sm' : 'rounded-sm'
-      }`}>
+      <div
+        className={`flex-1 flex flex-col overflow-hidden relative ${
+          side === 'left' ? 'rounded-l-sm' : side === 'right' ? 'rounded-r-sm' : 'rounded-sm'
+        } ${pageClass} ${!antique ? 'bg-card' : ''}`}
+        style={antique ? pageBg : undefined}
+      >
         <div className="flex-1" />
       </div>
     );
   }
 
   return (
-    <div className={`flex-1 flex flex-col bg-card overflow-hidden relative ${
-      side === 'left' ? 'rounded-l-sm' : side === 'right' ? 'rounded-r-sm' : 'rounded-sm'
-    }`}>
+    <div
+      className={`flex-1 flex flex-col overflow-hidden relative ${
+        side === 'left' ? 'rounded-l-sm' : side === 'right' ? 'rounded-r-sm' : 'rounded-sm'
+      } ${pageClass} ${!antique ? 'bg-card' : ''}`}
+      style={antique ? pageBg : undefined}
+    >
+      {/* Aged edge speckles (antique only) */}
+      {antique && (
+        <>
+          <div className="absolute inset-0 pointer-events-none opacity-[0.06]" style={{
+            backgroundImage: `radial-gradient(circle at 10% 20%, hsl(25,30%,30%) 1px, transparent 1px),
+              radial-gradient(circle at 90% 80%, hsl(25,30%,30%) 1px, transparent 1px),
+              radial-gradient(circle at 50% 50%, hsl(25,30%,30%) 0.5px, transparent 0.5px)`,
+            backgroundSize: '24px 24px',
+          }} />
+        </>
+      )}
       {/* Spine shadow */}
       {side === 'left' && (
         <div className="absolute top-0 bottom-0 right-0 w-6 pointer-events-none"
-          style={{ background: 'linear-gradient(to left, hsl(var(--foreground) / 0.06), transparent)' }}
+          style={{ background: antique ? 'linear-gradient(to left, hsl(28,25%,25% / 0.12), transparent)' : 'linear-gradient(to left, hsl(var(--foreground) / 0.06), transparent)' }}
         />
       )}
       {side === 'right' && (
         <div className="absolute top-0 bottom-0 left-0 w-6 pointer-events-none"
-          style={{ background: 'linear-gradient(to right, hsl(var(--foreground) / 0.06), transparent)' }}
+          style={{ background: antique ? 'linear-gradient(to right, hsl(28,25%,25% / 0.12), transparent)' : 'linear-gradient(to right, hsl(var(--foreground) / 0.06), transparent)' }}
         />
       )}
 
@@ -80,12 +109,12 @@ const SinglePage = memo(({
         'px-10 md:px-14'
       } md:py-10`}>
         {pageData.isChapterStart && (
-          <h2 className="mb-4 text-center font-serif text-lg font-semibold tracking-wide text-foreground/60 uppercase">
+          <h2 className={`mb-4 text-center font-serif text-lg font-semibold tracking-wide uppercase ${titleColor}`}>
             {pageData.chapterTitle}
           </h2>
         )}
         <div
-          className="flex-1 font-serif text-foreground/90 overflow-hidden"
+          className={`flex-1 font-serif overflow-hidden ${textColor}`}
           style={{ fontSize: `${fontSize}px`, lineHeight: lineSpacing }}
         >
           {pageData.content.map((paragraph, i) => (
@@ -107,8 +136,10 @@ const ClassicMode = memo(() => {
   const [, setPageIdx] = useRecoilState(currentPageIndexAtom);
   const fontSize = useAtomValue(fontSizeAtom);
   const lineSpacing = useAtomValue(lineSpacingAtom);
+  const theme = useAtomValue(readingThemeAtom);
   const playFlip = usePageFlipSound();
   const isMobile = useIsMobile();
+  const isAntique = theme === 'antique';
 
   const [spreadIndex, setSpreadIndex] = useState(0); // index into spreads
   const [flipDir, setFlipDir] = useState<FlipDirection>('none');
@@ -209,23 +240,33 @@ const ClassicMode = memo(() => {
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const easedProgress = ease(flipProgress);
-  const shadowIntensity = Math.sin(easedProgress * Math.PI) * 0.35;
+  const shadowIntensity = Math.sin(flipProgress * Math.PI) * 0.35;
 
-  /* For next: the right page of the OLD spread flips from right→left (rotateY from 0 to -180, origin left)
-     For prev: the left page of the OLD spread flips from left→right (rotateY from 0 to 180, origin right) */
-
+  /* For next: right page flips right→left (rotateY 0 → -180). For prev: left page flips left→right (0 → 180). */
   const flipRotation = flipDir === 'next'
     ? -180 * easedProgress
     : 180 * easedProgress;
 
-  // The flipping page shows the page from the previous spread that's "turning away"
-  const flippingPageData = flipDir === 'next'
-    ? prevSpread?.[1] // right page of previous spread flips away
-    : nextSpread?.[0]; // left page of next spread flips away
+  /* Elevated trajectory: page follows an arc (lifts up through the middle of the flip). */
+  const arcPeakPx = 22;
+  const arcY = -arcPeakPx * 4 * flipProgress * (1 - flipProgress); // parabola: 0 at 0 and 1, max -22px at 0.5
 
+  /* Slight lift toward viewer at mid-flip (translateZ). */
+  const liftZ = Math.sin(flipProgress * Math.PI) * 5;
+
+  /* Middle bend: page curves like real paper (rotateX peaks when page is vertical). */
+  const bendDegrees = 14;
+  const bendX = Math.sin(flipProgress * Math.PI) * bendDegrees;
+
+  const flippingPageData = flipDir === 'next'
+    ? prevSpread?.[1]
+    : nextSpread?.[0];
+
+  /* Transform order: translate (arc + lift) then bend then flip, so the page moves through space then rotates. */
   const flippingStyle: React.CSSProperties = prefersReducedMotion ? {} : {
-    transform: `rotateY(${flipRotation}deg)`,
+    transform: `translateY(${arcY}px) translateZ(${liftZ}px) rotateX(${bendX}deg) rotateY(${flipRotation}deg)`,
     transformOrigin: flipDir === 'next' ? 'left center' : 'right center',
+    transformStyle: 'preserve-3d',
     backfaceVisibility: 'hidden' as const,
     willChange: 'transform',
     zIndex: 10,
@@ -266,11 +307,90 @@ const ClassicMode = memo(() => {
           perspectiveOrigin: 'center center',
         }}
       >
+        {/* Antique book shell: cover, gilded edge, corners, spine ribbon, bookmark ribbons */}
+        {isAntique && (
+          <>
+            {/* Left binding strip (red cover) */}
+            <div
+              className="absolute left-0 top-0 bottom-0 w-3 md:w-4 rounded-l-sm pointer-events-none"
+              style={{
+                background: 'linear-gradient(90deg, hsl(0,55%,28%) 0%, hsl(0,50%,22%) 100%)',
+                boxShadow: 'inset 1px 0 0 hsl(0,40%,45%)',
+                zIndex: 0,
+              }}
+            />
+            {/* Right binding strip (red cover) */}
+            <div
+              className="absolute right-0 top-0 bottom-0 w-3 md:w-4 rounded-r-sm pointer-events-none"
+              style={{
+                background: 'linear-gradient(270deg, hsl(0,55%,28%) 0%, hsl(0,50%,22%) 100%)',
+                boxShadow: 'inset -1px 0 0 hsl(0,40%,45%)',
+                zIndex: 0,
+              }}
+            />
+            {/* Gilded fore-edge (gold outer edge) */}
+            <div
+              className="absolute right-0 top-0 bottom-0 w-1 pointer-events-none rounded-r-sm"
+              style={{
+                background: 'linear-gradient(90deg, transparent 0%, hsl(45,70%,55%) 30%, hsl(42,75%,60%) 50%, hsl(45,70%,55%) 70%, transparent 100%)',
+                boxShadow: '0 0 8px hsl(45,60%,50% / 0.4)',
+                zIndex: 2,
+              }}
+            />
+            {/* Gold corner embellishments */}
+            <div className="absolute top-0 left-0 w-4 h-4 md:w-5 md:h-5 pointer-events-none" style={{ zIndex: 3 }}>
+              <div className="absolute inset-0 border-l-2 border-t-2 border-[hsl(45,65%,55%)] rounded-tl-sm" style={{ boxShadow: '0 0 6px hsl(45,60%,50% / 0.5)' }} />
+            </div>
+            <div className="absolute top-0 right-0 w-4 h-4 md:w-5 md:h-5 pointer-events-none" style={{ zIndex: 3 }}>
+              <div className="absolute inset-0 border-r-2 border-t-2 border-[hsl(45,65%,55%)] rounded-tr-sm" style={{ boxShadow: '0 0 6px hsl(45,60%,50% / 0.5)' }} />
+            </div>
+            <div className="absolute bottom-0 left-0 w-4 h-4 md:w-5 md:h-5 pointer-events-none" style={{ zIndex: 3 }}>
+              <div className="absolute inset-0 border-l-2 border-b-2 border-[hsl(45,65%,55%)] rounded-bl-sm" />
+            </div>
+            <div className="absolute bottom-0 right-0 w-4 h-4 md:w-5 md:h-5 pointer-events-none" style={{ zIndex: 3 }}>
+              <div className="absolute inset-0 border-r-2 border-b-2 border-[hsl(45,65%,55%)] rounded-br-sm" />
+            </div>
+            {/* Spine ribbon (bottom center) */}
+            <div
+              className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-6 pointer-events-none rounded-t"
+              style={{
+                background: 'linear-gradient(180deg, hsl(0,55%,35%) 0%, hsl(0,50%,28%) 100%)',
+                zIndex: 4,
+              }}
+            />
+            {/* Green bookmark ribbons draped over top corners */}
+            <div className="absolute top-0 left-[10%] w-8 h-10 md:w-10 md:h-12 pointer-events-none" style={{ zIndex: 15 }}>
+              <div
+                className="absolute w-full h-full rounded-b-md opacity-90"
+                style={{
+                  background: 'linear-gradient(135deg, hsl(142,35%,42%) 0%, hsl(140,30%,38%) 100%)',
+                  boxShadow: 'inset 0 0 8px hsl(142,25%,55%), 2px 2px 6px hsl(0,0%,0% / 0.15)',
+                  border: '1px solid hsl(142,25%,50%)',
+                }}
+              />
+              <div className="absolute inset-0 rounded-b-md opacity-30" style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '4px 4px' }} />
+            </div>
+            <div className="absolute top-0 right-[10%] w-8 h-10 md:w-10 md:h-12 pointer-events-none" style={{ zIndex: 15 }}>
+              <div
+                className="absolute w-full h-full rounded-b-md opacity-90"
+                style={{
+                  background: 'linear-gradient(225deg, hsl(142,35%,42%) 0%, hsl(140,30%,38%) 100%)',
+                  boxShadow: 'inset 0 0 8px hsl(142,25%,55%), -2px 2px 6px hsl(0,0%,0% / 0.15)',
+                  border: '1px solid hsl(142,25%,50%)',
+                }}
+              />
+              <div className="absolute inset-0 rounded-b-md opacity-30" style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '4px 4px' }} />
+            </div>
+          </>
+        )}
+
         {/* Outer book shadow & edge */}
         <div
           className="absolute inset-0 rounded-sm"
           style={{
-            boxShadow: '0 4px 30px -6px hsl(var(--foreground) / 0.12), 0 1px 6px hsl(var(--foreground) / 0.06)',
+            boxShadow: isAntique
+              ? '0 4px 30px -6px hsl(28,25%,20% / 0.2), 0 1px 6px hsl(28,25%,15% / 0.12)'
+              : '0 4px 30px -6px hsl(var(--foreground) / 0.12), 0 1px 6px hsl(var(--foreground) / 0.06)',
             zIndex: 0,
           }}
         />
@@ -278,30 +398,33 @@ const ClassicMode = memo(() => {
         {/* Pages container */}
         <div className="absolute inset-0 flex rounded-sm overflow-hidden" style={{ zIndex: 1 }}>
           {isMobile ? (
-            /* Single page on mobile */
             <SinglePage
               pageData={currentSpread[0] || null}
               fontSize={fontSize}
               lineSpacing={lineSpacing}
               side="single"
+              antique={isAntique}
             />
           ) : (
             <>
-              {/* Left page */}
               <SinglePage
                 pageData={currentSpread[0] || null}
                 fontSize={fontSize}
                 lineSpacing={lineSpacing}
                 side="left"
+                antique={isAntique}
               />
               {/* Spine divider */}
-              <div className="w-[2px] bg-border/30 relative z-10" />
-              {/* Right page */}
+              <div
+                className="w-[2px] relative z-10"
+                style={isAntique ? { background: 'linear-gradient(180deg, hsl(0,40%,30%) 0%, hsl(0,35%,25%) 100%)' } : { backgroundColor: 'hsl(var(--border) / 0.3)' }}
+              />
               <SinglePage
                 pageData={currentSpread[1] || null}
                 fontSize={fontSize}
                 lineSpacing={lineSpacing}
                 side="right"
+                antique={isAntique}
               />
             </>
           )}
@@ -310,15 +433,15 @@ const ClassicMode = memo(() => {
         {/* 3D flipping page overlay */}
         {isAnimating && flipDir !== 'none' && flippingPageData && !prefersReducedMotion && (
           <div
-            className={`absolute top-0 bottom-0 overflow-hidden bg-card ${
-              isMobile ? 'left-0 right-0 rounded-sm' :
-              flipDir === 'next' ? 'right-0 rounded-r-sm' : 'left-0 rounded-l-sm'
-            }`}
+            className={`absolute top-0 bottom-0 overflow-hidden ${
+              isAntique ? '' : 'bg-card'
+            } ${isMobile ? 'left-0 right-0 rounded-sm' : flipDir === 'next' ? 'right-0 rounded-r-sm' : 'left-0 rounded-l-sm'}`}
             style={{
               ...flippingStyle,
               width: isMobile ? '100%' : '50%',
               ...(flipDir === 'next' && !isMobile ? { left: '50%', right: 'auto' } : {}),
               ...(flipDir === 'prev' && !isMobile ? { right: '50%', left: 'auto' } : {}),
+              ...(isAntique ? { background: 'linear-gradient(180deg, hsl(42,38%,92%) 0%, hsl(38,35%,88%) 100%)' } : {}),
             }}
           >
             {/* Fold shadow */}
@@ -333,13 +456,14 @@ const ClassicMode = memo(() => {
               fontSize={fontSize}
               lineSpacing={lineSpacing}
               side={isMobile ? 'single' : flipDir === 'next' ? 'right' : 'left'}
+              antique={isAntique}
             />
           </div>
         )}
 
         {/* Page numbers */}
         <div className="absolute bottom-3 left-0 right-0 flex items-center justify-center z-10">
-          <span className="font-serif text-xs tracking-widest text-muted-foreground/50">
+          <span className={`font-serif text-xs tracking-widest ${isAntique ? 'text-[hsl(28,20%,35%)]' : 'text-muted-foreground/50'}`}>
             {rightPageNum && currentSpread[1]
               ? `${leftPageNum}–${rightPageNum}`
               : leftPageNum
@@ -348,10 +472,14 @@ const ClassicMode = memo(() => {
         </div>
 
         {/* Paper stack illusion */}
-        <div className="absolute inset-x-[2px] bottom-[-2px] h-[3px] rounded-b-sm bg-card/80"
-          style={{ zIndex: 0, boxShadow: '0 1px 2px hsl(var(--foreground) / 0.04)' }} />
-        <div className="absolute inset-x-[4px] bottom-[-4px] h-[3px] rounded-b-sm bg-card/60"
-          style={{ zIndex: -1, boxShadow: '0 1px 2px hsl(var(--foreground) / 0.02)' }} />
+        <div
+          className="absolute inset-x-[2px] bottom-[-2px] h-[3px] rounded-b-sm"
+          style={{ zIndex: 0, boxShadow: '0 1px 2px hsl(var(--foreground) / 0.04)', backgroundColor: isAntique ? 'hsl(38,30%,82%)' : 'hsl(var(--card))' }}
+        />
+        <div
+          className="absolute inset-x-[4px] bottom-[-4px] h-[3px] rounded-b-sm"
+          style={{ zIndex: -1, boxShadow: '0 1px 2px hsl(var(--foreground) / 0.02)', backgroundColor: isAntique ? 'hsl(38,28%,75%)' : 'hsl(var(--card) / 0.6)' }}
+        />
       </div>
     </div>
   );

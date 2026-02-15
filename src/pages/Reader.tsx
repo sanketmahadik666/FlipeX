@@ -15,6 +15,7 @@ const themeStyles: Record<string, string> = {
   light: 'bg-background text-foreground',
   dark: 'bg-[hsl(222,47%,11%)] text-[hsl(210,40%,98%)]',
   sepia: 'bg-[hsl(39,70%,90%)] text-[hsl(30,20%,20%)]',
+  antique: 'bg-[hsl(45,25%,97%)] text-[hsl(30,25%,18%)]',
 };
 
 const Reader = () => {

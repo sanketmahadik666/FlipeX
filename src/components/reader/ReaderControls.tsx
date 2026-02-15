@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { useAtom } from 'jotai';
-import { Sun, Moon, BookOpen, Minus, Plus, Volume2, VolumeOff } from 'lucide-react';
+import { Sun, Moon, BookOpen, BookMarked, Minus, Plus, Volume2, VolumeOff } from 'lucide-react';
 import {
   fontSizeAtom,
   lineSpacingAtom,
@@ -24,6 +24,7 @@ const ReaderControls = memo(() => {
     { id: 'light', label: 'Light', icon: <Sun className="h-4 w-4" /> },
     { id: 'dark', label: 'Dark', icon: <Moon className="h-4 w-4" /> },
     { id: 'sepia', label: 'Sepia', icon: <BookOpen className="h-4 w-4" /> },
+    { id: 'antique', label: 'Antique', icon: <BookMarked className="h-4 w-4" /> },
   ];
 
   const modes: { id: ReadingMode; label: string }[] = [
