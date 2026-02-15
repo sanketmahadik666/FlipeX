@@ -148,6 +148,12 @@ const ClassicMode = memo(() => {
   const animFrameRef = useRef<number>();
 
   const FLIP_DURATION = 620;
+  
+  /* ── Enhanced visual constants ── */
+  const SPECULAR_INTENSITY = 0.35;
+  const AO_DARKNESS = 0.18;
+  const EDGE_BLUR_PX = 0.8;
+  const ELASTIC_OVERSHOOT = 0.03;
 
   /* Flatten all pages */
   const allPages = useMemo(() => (doc ? flattenPages(doc) : []), [doc]);
@@ -185,12 +191,16 @@ const ClassicMode = memo(() => {
   const leftPageNum = isMobile ? spreadIndex + 1 : spreadIndex * 2 + 1;
   const rightPageNum = isMobile ? null : spreadIndex * 2 + 2;
 
-  /* Smoother ease: soft ease-in-out (smooth start and end, fluid through the middle). */
+  /* Enhanced spring ease: elastic with slight overshoot for natural physics. */
   const ease = (t: number) => {
-    const s = 1.7; // smoothness: higher = gentler acceleration
-    return t <= 0 ? 0 : t >= 1 ? 1 : t < 0.5
-      ? 0.5 * Math.pow(t * 2, s)
-      : 1 - 0.5 * Math.pow(2 - t * 2, s);
+    if (t === 0) return 0;
+    if (t === 1) return 1;
+    // Elastic ease-out with controlled overshoot
+    const c4 = (2 * Math.PI) / 3;
+    const elastic = Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+    // Blend with smooth ease for stability (80% elastic, 20% smooth)
+    const smooth = 1 - Math.pow(1 - t, 3);
+    return elastic * 0.8 + smooth * 0.2;
   };
 
   const animateFlip = useCallback((startTime: number) => {
@@ -247,6 +257,12 @@ const ClassicMode = memo(() => {
 
   const easedProgress = ease(flipProgress);
   const shadowIntensity = Math.sin(flipProgress * Math.PI) * 0.35;
+  
+  /* Specular highlight intensity (peaks at mid-flip) */
+  const specularIntensity = Math.sin(flipProgress * Math.PI) * SPECULAR_INTENSITY;
+  
+  /* Ambient occlusion intensity (stronger when pages are closer) */
+  const aoIntensity = (1 - Math.abs(flipProgress - 0.5) * 2) * AO_DARKNESS;
 
   /* For next: right page flips right→left (rotateY 0 → -180). For prev: left page flips left→right (0 → 180). */
   const flipRotation = flipDir === 'next'
@@ -260,9 +276,9 @@ const ClassicMode = memo(() => {
   /* Lift toward viewer at mid-flip (translateZ). */
   const liftZ = Math.sin(flipProgress * Math.PI) * 12;
 
-  /* Middle bend: page curves like real paper; more angular rotation through the flip. */
+  /* Progressive quadratic bend: gentle start, sharp peak, gentle end for natural paper curl. */
   const bendDegrees = 28;
-  const bendX = Math.sin(flipProgress * Math.PI) * bendDegrees;
+  const bendX = Math.pow(Math.sin(flipProgress * Math.PI), 0.7) * bendDegrees;
 
   const flippingPageData = flipDir === 'next'
     ? prevSpread?.[1]
@@ -271,6 +287,9 @@ const ClassicMode = memo(() => {
   /* Page thickness (visible edge when flipping). */
   const pageThicknessPx = 14;
 
+  /* Edge blur for soft curl appearance */
+  const edgeBlur = EDGE_BLUR_PX * Math.sin(flipProgress * Math.PI);
+  
   /* Transform: first translate (arc + lift in screen space), then bend, then flip. */
   const flippingStyle: React.CSSProperties = prefersReducedMotion ? {} : {
     transform: `translateY(${arcY}px) translateZ(${liftZ}px) rotateX(${bendX}deg) rotateY(${flipRotation}deg)`,
@@ -280,6 +299,8 @@ const ClassicMode = memo(() => {
     willChange: 'transform',
     zIndex: 10,
     boxShadow: `${flipDir === 'next' ? '-' : ''}${shadowIntensity * 25}px 0 ${shadowIntensity * 35}px -8px hsl(var(--foreground) / ${shadowIntensity})`,
+    filter: `blur(${edgeBlur}px)`,
+    contain: 'layout style paint' as const,
   };
 
   return (
@@ -406,7 +427,16 @@ const ClassicMode = memo(() => {
         />
 
         {/* Pages container */}
-        <div className="absolute inset-0 flex rounded-sm overflow-hidden" style={{ zIndex: 1 }}>
+        <div 
+          className="absolute inset-0 flex rounded-sm overflow-hidden" 
+          style={{ 
+            zIndex: 1,
+            // Subtle depth effect: blur non-flipping pages slightly during animation
+            filter: isAnimating ? `blur(${Math.sin(flipProgress * Math.PI) * 0.5}px)` : 'none',
+            opacity: isAnimating ? 1 - (Math.sin(flipProgress * Math.PI) * 0.04) : 1,
+            transition: isAnimating ? 'none' : 'filter 0.2s ease, opacity 0.2s ease',
+          }}
+        >
           {isMobile ? (
             <SinglePage
               pageData={currentSpread[0] || null}
@@ -469,12 +499,32 @@ const ClassicMode = memo(() => {
                 zIndex: 0,
               }}
             />
-            {/* Fold shadow */}
+            {/* Enhanced multi-layer gradients for realistic paper curl */}
+            {/* Ambient occlusion: dark shadow where pages meet */}
+            <div className="absolute inset-0 pointer-events-none" style={{
+              background: flipDir === 'next'
+                ? `linear-gradient(to right, hsl(var(--foreground) / ${aoIntensity}), transparent 8%)`
+                : `linear-gradient(to left, hsl(var(--foreground) / ${aoIntensity}), transparent 8%)`,
+              zIndex: 3,
+            }} />
+            {/* Fold shadow gradient */}
             <div className="absolute inset-0 pointer-events-none" style={{
               background: flipDir === 'next'
                 ? `linear-gradient(to right, hsl(var(--foreground) / ${shadowIntensity * 0.15}), transparent 40%)`
                 : `linear-gradient(to left, hsl(var(--foreground) / ${shadowIntensity * 0.15}), transparent 40%)`,
-              zIndex: 5,
+              zIndex: 4,
+            }} />
+            {/* Specular highlight: bright edge on curling paper */}
+            <div className="absolute inset-0 pointer-events-none" style={{
+              background: flipDir === 'next'
+                ? `radial-gradient(ellipse 40% 100% at 0% 50%, rgba(255,255,255,${specularIntensity * 0.4}), transparent 60%)`
+                : `radial-gradient(ellipse 40% 100% at 100% 50%, rgba(255,255,255,${specularIntensity * 0.4}), transparent 60%)`,
+              zIndex: 6,
+            }} />
+            {/* Backlight glow: subtle illumination when page faces viewer */}
+            <div className="absolute inset-0 pointer-events-none" style={{
+              background: `rgba(255,255,255,${specularIntensity * 0.08})`,
+              zIndex: 2,
             }} />
             <SinglePage
               pageData={flippingPageData}
