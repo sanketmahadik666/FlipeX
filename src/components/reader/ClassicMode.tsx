@@ -15,6 +15,32 @@ const BOOK_ZOOM_MAX = 1.3;
 const BOOK_ZOOM_STEP = 0.1;
 const HASH_PREFIX = 'page';
 
+/* ── Pastel colors for chapter bookmark tabs ── */
+const TAB_COLORS = [
+  'rgba(255, 182, 193, 0.55)', /* light pink */
+  'rgba(173, 216, 230, 0.55)', /* light blue */
+  'rgba(144, 238, 144, 0.55)', /* light green */
+  'rgba(255, 218, 185, 0.55)', /* peach */
+  'rgba(221, 160, 221, 0.55)', /* plum */
+  'rgba(255, 255, 200, 0.55)', /* light yellow */
+  'rgba(176, 224, 230, 0.55)', /* powder blue */
+  'rgba(255, 192, 203, 0.55)', /* pink */
+  'rgba(152, 251, 152, 0.55)', /* pale green */
+  'rgba(230, 230, 250, 0.55)', /* lavender */
+];
+const TAB_ACTIVE_COLORS = [
+  'rgba(255, 182, 193, 0.9)',
+  'rgba(173, 216, 230, 0.9)',
+  'rgba(144, 238, 144, 0.9)',
+  'rgba(255, 218, 185, 0.9)',
+  'rgba(221, 160, 221, 0.9)',
+  'rgba(255, 255, 200, 0.9)',
+  'rgba(176, 224, 230, 0.9)',
+  'rgba(255, 192, 203, 0.9)',
+  'rgba(152, 251, 152, 0.9)',
+  'rgba(230, 230, 250, 0.9)',
+];
+
 /* ── Flatten all pages across chapters into a single list ── */
 interface FlatPage {
   content: string[];
@@ -382,7 +408,7 @@ const ClassicMode = memo(() => {
           border: '1px solid hsl(var(--border) / 0.5)',
         }}
       >
-        {/* Book with zoom */}
+        {/* Book with zoom + bookmark tabs */}
         <div
           className="flex items-center justify-center"
           style={{
@@ -391,36 +417,107 @@ const ClassicMode = memo(() => {
             filter: 'drop-shadow(0 8px 24px hsl(var(--foreground) / 0.12)) drop-shadow(0 2px 8px hsl(var(--foreground) / 0.08))',
           }}
         >
-          <HTMLFlipBook
-            width={pageWidth}
-            height={pageHeight}
-            size="fixed"
-            minWidth={200}
-            maxWidth={600}
-            minHeight={300}
-            maxHeight={900}
-            showCover={false}
-            flippingTime={520}
-            drawShadow={true}
-            maxShadowOpacity={0.42}
-            usePortrait={isMobile}
-            mobileScrollSupport={true}
-            autoSize={false}
-            onFlip={handleFlip}
-            onChangeState={handleChangeState}
-            ref={bookRef}
-            className="book-container"
-          >
-            {allPages.map((page, idx) => (
-              <SinglePage
-                key={idx}
-                pageData={page}
-                fontSize={fontSize}
-                lineSpacing={lineSpacing}
-                side={isMobile ? 'single' : (idx % 2 === 0 ? 'left' : 'right')}
-              />
-            ))}
-          </HTMLFlipBook>
+          <div className="relative flex items-stretch">
+            {/* The flipbook */}
+            <HTMLFlipBook
+              width={pageWidth}
+              height={pageHeight}
+              size="fixed"
+              minWidth={200}
+              maxWidth={600}
+              minHeight={300}
+              maxHeight={900}
+              showCover={false}
+              flippingTime={520}
+              drawShadow={true}
+              maxShadowOpacity={0.42}
+              usePortrait={isMobile}
+              mobileScrollSupport={true}
+              autoSize={false}
+              onFlip={handleFlip}
+              onChangeState={handleChangeState}
+              ref={bookRef}
+              className="book-container"
+            >
+              {allPages.map((page, idx) => (
+                <SinglePage
+                  key={idx}
+                  pageData={page}
+                  fontSize={fontSize}
+                  lineSpacing={lineSpacing}
+                  side={isMobile ? 'single' : (idx % 2 === 0 ? 'left' : 'right')}
+                />
+              ))}
+            </HTMLFlipBook>
+
+            {/* Chapter bookmark tabs on right edge */}
+            {doc && doc.chapters.length > 1 && (
+              <div
+                className="flex flex-col justify-start py-3"
+                style={{
+                  width: '18px',
+                  height: `${pageHeight}px`,
+                  marginLeft: '-2px',
+                }}
+              >
+                {doc.chapters.map((chapter: any, chIdx: number) => {
+                  const firstPageIdx = allPages.findIndex(p => p.chapterIdx === chIdx);
+                  const isActive = allPages[currentPageIndex]?.chapterIdx === chIdx;
+                  const tabH = Math.max(26, Math.floor((pageHeight - 24) / doc.chapters.length) - 3);
+
+                  return (
+                    <button
+                      key={chIdx}
+                      onClick={() => {
+                        if (firstPageIdx >= 0 && bookRef.current) {
+                          bookRef.current.pageFlip()?.turnToPage(firstPageIdx);
+                        }
+                      }}
+                      title={chapter.title}
+                      className="group relative cursor-pointer border-none p-0"
+                      style={{
+                        width: isActive ? '22px' : '16px',
+                        height: `${tabH}px`,
+                        marginBottom: '3px',
+                        backgroundColor: isActive
+                          ? TAB_ACTIVE_COLORS[chIdx % TAB_ACTIVE_COLORS.length]
+                          : TAB_COLORS[chIdx % TAB_COLORS.length],
+                        borderRadius: '0 5px 5px 0',
+                        boxShadow: isActive
+                          ? '2px 1px 6px rgba(0,0,0,0.18)'
+                          : '1px 0px 3px rgba(0,0,0,0.08)',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        const el = e.currentTarget as HTMLButtonElement;
+                        el.style.width = '24px';
+                        el.style.backgroundColor = TAB_ACTIVE_COLORS[chIdx % TAB_ACTIVE_COLORS.length];
+                      }}
+                      onMouseLeave={(e) => {
+                        const el = e.currentTarget as HTMLButtonElement;
+                        el.style.width = isActive ? '22px' : '16px';
+                        el.style.backgroundColor = isActive
+                          ? TAB_ACTIVE_COLORS[chIdx % TAB_ACTIVE_COLORS.length]
+                          : TAB_COLORS[chIdx % TAB_COLORS.length];
+                      }}
+                    >
+                      {/* Tooltip on hover */}
+                      <span
+                        className="absolute right-full mr-2 top-1/2 -translate-y-1/2 px-2.5 py-1 text-xs font-medium rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
+                        style={{
+                          backgroundColor: 'hsl(var(--popover))',
+                          color: 'hsl(var(--popover-foreground))',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                        }}
+                      >
+                        {chapter.title}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
