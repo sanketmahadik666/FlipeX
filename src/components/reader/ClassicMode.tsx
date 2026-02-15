@@ -92,7 +92,7 @@ const SinglePage = memo(({
           className="flex-1 font-serif text-foreground/90 overflow-hidden"
           style={{ fontSize: `${fontSize}px`, lineHeight: lineSpacing }}
         >
-          {pageData.content.map((paragraph, i) => (
+          {pageData.content?.map((paragraph, i) => (
             <p key={i} className="mb-3 text-justify">
               {paragraph}
             </p>

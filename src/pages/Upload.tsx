@@ -2,8 +2,9 @@ import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { useSetRecoilState } from 'recoil';
-import { Upload as UploadIcon, FileText, AlertCircle } from 'lucide-react';
+import { Upload as UploadIcon, FileText, AlertCircle, BookOpen } from 'lucide-react';
 import { processPDF } from '@/lib/pdfProcessor';
+import { generateSampleDocument } from '@/lib/sampleDocument';
 import { setStatus, setCurrentDocumentId, setError } from '@/store/appSlice';
 import { processedDocumentAtom } from '@/state/recoilAtoms';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -52,6 +53,28 @@ const Upload = () => {
     const file = e.target.files?.[0];
     if (file) handleFile(file);
   }, [handleFile]);
+
+  const loadSampleDocument = useCallback(async () => {
+    setProcessing(true);
+    setLocalError(null);
+    dispatch(setStatus('processing'));
+
+    try {
+      // Simulate processing delay for UX
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      const doc = generateSampleDocument();
+      setDocument(doc);
+      dispatch(setCurrentDocumentId(doc.id));
+      dispatch(setStatus('ready'));
+      navigate('/experience');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to load sample document.';
+      setLocalError(msg);
+      dispatch(setError(msg));
+      setProcessing(false);
+    }
+  }, [dispatch, navigate, setDocument]);
 
   if (processing) {
     return (
@@ -106,8 +129,25 @@ const Upload = () => {
           </div>
         )}
 
-        <Button variant="ghost" onClick={() => navigate('/')}>
-          ← Back
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t border-border" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-background px-2 text-muted-foreground">Or</span>
+          </div>
+        </div>
+
+        <Button 
+          variant="outline" 
+          className="w-full" 
+          onClick={loadSampleDocument}
+        >
+          <BookOpen className="mr-2 h-4 w-4" />
+          Try Sample Document
+        </Button>
+
+        <Button variant="ghost" onClick={() => navigate('/')}>          ← Back
         </Button>
       </div>
     </div>
