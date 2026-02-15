@@ -4,7 +4,7 @@ import { useAtomValue } from 'jotai';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { processedDocumentAtom, currentChapterIndexAtom, currentPageIndexAtom } from '@/state/recoilAtoms';
 import { fontSizeAtom, lineSpacingAtom, readingThemeAtom } from '@/state/jotaiAtoms';
-import { usePageFlipSound } from '@/hooks/usePageFlipSound';
+import { usePageFlipSoundEffects } from '@/hooks/usePageFlipSoundEffects';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -137,7 +137,7 @@ const ClassicMode = memo(() => {
   const fontSize = useAtomValue(fontSizeAtom);
   const lineSpacing = useAtomValue(lineSpacingAtom);
   const theme = useAtomValue(readingThemeAtom);
-  const playFlip = usePageFlipSound();
+  const { play: playFlip } = usePageFlipSoundEffects();
   const isMobile = useIsMobile();
   const isAntique = theme === 'antique';
 
