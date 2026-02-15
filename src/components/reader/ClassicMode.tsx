@@ -248,21 +248,21 @@ const ClassicMode = memo(() => {
     : 180 * easedProgress;
 
   /* Elevated trajectory: page follows an arc (lifts up through the middle of the flip). */
-  const arcPeakPx = 22;
-  const arcY = -arcPeakPx * 4 * flipProgress * (1 - flipProgress); // parabola: 0 at 0 and 1, max -22px at 0.5
+  const arcPeakPx = 38;
+  const arcY = -arcPeakPx * 4 * flipProgress * (1 - flipProgress); // parabola: 0 at 0 and 1, max lift at 0.5
 
-  /* Slight lift toward viewer at mid-flip (translateZ). */
-  const liftZ = Math.sin(flipProgress * Math.PI) * 5;
+  /* Lift toward viewer at mid-flip (translateZ). */
+  const liftZ = Math.sin(flipProgress * Math.PI) * 12;
 
   /* Middle bend: page curves like real paper (rotateX peaks when page is vertical). */
-  const bendDegrees = 14;
+  const bendDegrees = 22;
   const bendX = Math.sin(flipProgress * Math.PI) * bendDegrees;
 
   const flippingPageData = flipDir === 'next'
     ? prevSpread?.[1]
     : nextSpread?.[0];
 
-  /* Transform order: translate (arc + lift) then bend then flip, so the page moves through space then rotates. */
+  /* Transform: first translate (arc + lift in screen space), then bend, then flip. */
   const flippingStyle: React.CSSProperties = prefersReducedMotion ? {} : {
     transform: `translateY(${arcY}px) translateZ(${liftZ}px) rotateX(${bendX}deg) rotateY(${flipRotation}deg)`,
     transformOrigin: flipDir === 'next' ? 'left center' : 'right center',
@@ -297,7 +297,7 @@ const ClassicMode = memo(() => {
         </Button>
       </div>
 
-      {/* Book with perspective */}
+      {/* Book with perspective (preserve-3d so flip arc and bend render in 3D) */}
       <div
         className={`relative ${isMobile ? 'w-full max-w-[400px]' : 'w-full max-w-[960px]'}`}
         style={{
@@ -305,6 +305,7 @@ const ClassicMode = memo(() => {
           maxHeight: '82vh',
           perspective: '1800px',
           perspectiveOrigin: 'center center',
+          transformStyle: 'preserve-3d',
         }}
       >
         {/* Antique book shell: cover, gilded edge, corners, spine ribbon, bookmark ribbons */}
