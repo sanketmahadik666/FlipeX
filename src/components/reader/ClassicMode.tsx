@@ -3,7 +3,8 @@ import { useRecoilState, useRecoilValue } from 'recoil';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-react';
 import HTMLFlipBook from 'react-pageflip-enhanced';
-import { processedDocumentAtom, currentChapterIndexAtom, currentPageIndexAtom } from '@/state/recoilAtoms';
+import { processedDocumentAtom, currentChapterIndexAtom, currentPageIndexAtom, isRichPage } from '@/state/recoilAtoms';
+import type { ContentBlock, PageContent } from '@/lib/pipeline/schemas';
 import { fontSizeAtom, lineSpacingAtom, bookZoomAtom } from '@/state/jotaiAtoms';
 import { usePageFlipSound } from '@/hooks/usePageFlipSound';
 import { usePageFlipBendSound } from '@/hooks/usePageFlipBendSound';
@@ -43,7 +44,8 @@ const TAB_ACTIVE_COLORS = [
 
 /* ── Flatten all pages across chapters into a single list ── */
 interface FlatPage {
-  content: string[];
+  content: string[];         // legacy text paragraphs
+  blocks?: ContentBlock[];   // new rich content blocks
   chapterTitle: string;
   isChapterStart: boolean;
   chapterIdx: number;
@@ -54,15 +56,29 @@ function flattenPages(doc: any): FlatPage[] {
   const flat: FlatPage[] = [];
   doc.chapters.forEach((chapter: any, chIdx: number) => {
     chapter.pages.forEach((page: any, pIdx: number) => {
-      // pages are string[] arrays directly, not objects with a content property
-      const content = Array.isArray(page) ? page : (page.content || []);
-      flat.push({
-        content,
-        chapterTitle: chapter.title,
-        isChapterStart: pIdx === 0,
-        chapterIdx: chIdx,
-        pageIdx: pIdx,
-      });
+      if (isRichPage(page)) {
+        // New pipeline: PageContent with blocks
+        flat.push({
+          content: page.blocks
+            .filter((b: ContentBlock) => b.type === 'paragraph')
+            .map((b: any) => b.text),
+          blocks: page.blocks,
+          chapterTitle: chapter.title,
+          isChapterStart: pIdx === 0,
+          chapterIdx: chIdx,
+          pageIdx: pIdx,
+        });
+      } else {
+        // Legacy: string[] array
+        const content = Array.isArray(page) ? page : (page.content || []);
+        flat.push({
+          content,
+          chapterTitle: chapter.title,
+          isChapterStart: pIdx === 0,
+          chapterIdx: chIdx,
+          pageIdx: pIdx,
+        });
+      }
     });
   });
   return flat;
@@ -93,6 +109,7 @@ const SinglePage = forwardRef<HTMLDivElement, {
   // Detect image-based pages (rendered from PDF)
   const isImagePage = pageData.content?.length === 1 && pageData.content[0]?.startsWith('__IMAGE__');
   const imageUrl = isImagePage ? pageData.content[0].replace('__IMAGE__', '') : null;
+  const hasRichBlocks = !!(pageData.blocks && pageData.blocks.length > 0);
 
   return (
     <div ref={ref} className="page-wrapper" style={{ width: '100%', height: '100%' }}>
@@ -116,9 +133,8 @@ const SinglePage = forwardRef<HTMLDivElement, {
           />
         )}
 
-        {/* Page content area - strictly contained within page height */}
+        {/* Page content area */}
         {isImagePage ? (
-          /* Image-based page — render PDF page as-is */
           <div
             className="flex-1 flex items-center justify-center overflow-hidden p-1"
             style={{ minHeight: 0 }}
@@ -132,7 +148,6 @@ const SinglePage = forwardRef<HTMLDivElement, {
             />
           </div>
         ) : (
-          /* Text-based page — render paragraphs */
           <div
             className={`flex-1 flex flex-col overflow-hidden ${
               side === 'single' ? 'px-6 py-6' : side === 'left' ? 'pl-8 pr-6 py-6' : 'pr-8 pl-6 py-6'
@@ -155,11 +170,95 @@ const SinglePage = forwardRef<HTMLDivElement, {
                 minHeight: 0,
               }}
             >
-              {pageData.content?.map((paragraph, i) => (
-                <p key={i} className="mb-2.5 text-justify leading-relaxed" style={{ wordBreak: 'break-word' }}>
-                  {paragraph}
-                </p>
-              ))}
+              {/* Rich content blocks (new pipeline) */}
+              {hasRichBlocks ? (
+                pageData.blocks!.map((block, i) => {
+                  switch (block.type) {
+                    case 'heading':
+                      return (
+                        <div key={i} className={`mb-3 font-serif font-semibold ${
+                          block.level === 1 ? 'text-lg' : block.level === 2 ? 'text-base' : 'text-sm'
+                        }`} style={{ color: 'rgba(40,30,20,0.9)' }}>
+                          {block.text}
+                        </div>
+                      );
+                    case 'paragraph':
+                      return (
+                        <p key={i} className="mb-2.5 text-justify leading-relaxed" style={{ wordBreak: 'break-word' }}>
+                          {block.text}
+                        </p>
+                      );
+                    case 'table':
+                      return (
+                        <div key={i} className="mb-3 overflow-x-auto">
+                          <table className="w-full text-xs border-collapse" style={{ borderColor: 'rgba(60,50,40,0.2)' }}>
+                            <thead>
+                              <tr>
+                                {block.headers.map((h, hi) => (
+                                  <th key={hi} className="border px-2 py-1 text-left font-semibold bg-[#f0ece6]" style={{ borderColor: 'rgba(60,50,40,0.2)' }}>
+                                    {h}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {block.rows.map((row, ri) => (
+                                <tr key={ri}>
+                                  {row.map((cell, ci) => (
+                                    <td key={ci} className="border px-2 py-1" style={{ borderColor: 'rgba(60,50,40,0.15)' }}>
+                                      {cell}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    case 'list':
+                      return block.ordered ? (
+                        <ol key={i} className="mb-2.5 pl-5 list-decimal" style={{ wordBreak: 'break-word' }}>
+                          {block.items.map((item, li) => (
+                            <li key={li} className="mb-1">{item}</li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <ul key={i} className="mb-2.5 pl-5 list-disc" style={{ wordBreak: 'break-word' }}>
+                          {block.items.map((item, li) => (
+                            <li key={li} className="mb-1">{item}</li>
+                          ))}
+                        </ul>
+                      );
+                    case 'blockquote':
+                      return (
+                        <blockquote key={i} className="mb-2.5 pl-3 border-l-2 italic" style={{ borderColor: 'rgba(60,50,40,0.3)', color: 'rgba(60,50,40,0.7)' }}>
+                          {block.text}
+                        </blockquote>
+                      );
+                    case 'image':
+                      return (
+                        <div key={i} className="mb-2.5 flex justify-center">
+                          <img src={block.dataUrl} alt={block.alt} className="max-w-full max-h-48 object-contain" />
+                        </div>
+                      );
+                    case 'code':
+                      return (
+                        <pre key={i} className="mb-2.5 p-2 rounded bg-[#f0ece6] text-xs font-mono overflow-x-auto" style={{ color: 'rgba(30,25,20,0.8)' }}>
+                          {block.text}
+                        </pre>
+                      );
+                    default:
+                      return null;
+                  }
+                })
+              ) : (
+                /* Legacy string[] paragraphs */
+                pageData.content?.map((paragraph, i) => (
+                  <p key={i} className="mb-2.5 text-justify leading-relaxed" style={{ wordBreak: 'break-word' }}>
+                    {paragraph}
+                  </p>
+                ))
+              )}
             </div>
 
             {/* Page number at bottom */}

@@ -1,11 +1,32 @@
 import { atom } from 'recoil';
+import type {
+  ContentBlock,
+  PageContent,
+  Chapter as PipelineChapter,
+  ProcessedDocument as PipelineDocument,
+} from '@/lib/pipeline/schemas';
 
+/* ═══════════════════════════════════════════════
+   RE-EXPORT PIPELINE TYPES
+   ═══════════════════════════════════════════════ */
+export type { ContentBlock, PageContent };
+
+/* ═══════════════════════════════════════════════
+   CHAPTER
+   Uses the new PageContent model with rich ContentBlocks,
+   but keeps `paragraphs: string[]` for FocusMode/ScrollMode
+   backward compatibility.
+   ═══════════════════════════════════════════════ */
 export interface Chapter {
   title: string;
+  pages: PageContent[] | string[][];   // new pipeline → PageContent[]; legacy → string[][]
   paragraphs: string[];
-  pages: string[][]; // Each page is an array of paragraphs
+  metadata?: Record<string, unknown>;
 }
 
+/* ═══════════════════════════════════════════════
+   PROCESSED DOCUMENT
+   ═══════════════════════════════════════════════ */
 export interface ProcessedDocument {
   id: string;
   title: string;
@@ -13,6 +34,17 @@ export interface ProcessedDocument {
   totalPages: number;
   totalParagraphs: number;
 }
+
+/* ═══════════════════════════════════════════════
+   HELPER: Detect if pages use the new ContentBlock model
+   ═══════════════════════════════════════════════ */
+export function isRichPage(page: PageContent | string[]): page is PageContent {
+  return typeof page === 'object' && 'blocks' in page && Array.isArray(page.blocks);
+}
+
+/* ═══════════════════════════════════════════════
+   RECOIL ATOMS
+   ═══════════════════════════════════════════════ */
 
 export const processedDocumentAtom = atom<ProcessedDocument | null>({
   key: 'processedDocument',

@@ -2,13 +2,11 @@ import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { useSetRecoilState } from 'recoil';
-import { Upload as UploadIcon, FileText, AlertCircle, BookOpen, Image as ImageIcon } from 'lucide-react';
-import { processPDF } from '@/lib/pdfProcessor';
-import { processPDFAsImages } from '@/lib/pdfPageRenderer';
+import { Upload as UploadIcon, FileText, AlertCircle, BookOpen } from 'lucide-react';
+import { processPDFInWorker } from '@/lib/pipeline/pipelineWorkerClient';
 import { generateSampleDocument } from '@/lib/sampleDocument';
 import { setStatus, setCurrentDocumentId, setError } from '@/store/appSlice';
 import { processedDocumentAtom } from '@/state/recoilAtoms';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 
 const Upload = () => {
@@ -18,8 +16,9 @@ const Upload = () => {
   const [processing, setProcessing] = useState(false);
   const [error, setLocalError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [ocrProgress, setOCRProgress] = useState<string>('');
-  const [imageMode, setImageMode] = useState(false);
+  const [progressStage, setProgressStage] = useState('');
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [progressDetail, setProgressDetail] = useState('');
 
   const handleFile = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.pdf')) {
@@ -29,35 +28,32 @@ const Upload = () => {
 
     setProcessing(true);
     setLocalError(null);
-    setOCRProgress('');
+    setProgressStage('');
+    setProgressPercent(0);
+    setProgressDetail('');
     dispatch(setStatus('processing'));
 
     try {
-      let doc;
-      if (imageMode) {
-        // Render PDF pages as images (exact layout)
-        doc = await processPDFAsImages(file, (progress) => {
-          setOCRProgress(progress);
-        });
-      } else {
-        // Extract text and build pages
-        doc = await processPDF(file, (progress) => {
-          setOCRProgress(progress);
-        });
-      }
-      setDocument(doc);
+      const doc = await processPDFInWorker(
+        file,
+        (stage, percent, detail) => {
+          setProgressStage(stage);
+          setProgressPercent(percent);
+          setProgressDetail(detail || '');
+        }
+      );
+      setDocument(doc as any);
       dispatch(setCurrentDocumentId(doc.id));
       dispatch(setStatus('ready'));
-      setOCRProgress('');
       navigate('/experience');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to process PDF.';
       setLocalError(msg);
       dispatch(setError(msg));
       setProcessing(false);
-      setOCRProgress('');
+      setProgressStage('');
     }
-  }, [dispatch, navigate, setDocument, imageMode]);
+  }, [dispatch, navigate, setDocument]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -77,9 +73,7 @@ const Upload = () => {
     dispatch(setStatus('processing'));
 
     try {
-      // Simulate processing delay for UX
       await new Promise(resolve => setTimeout(resolve, 800));
-      
       const doc = generateSampleDocument();
       setDocument(doc);
       dispatch(setCurrentDocumentId(doc.id));
@@ -94,11 +88,15 @@ const Upload = () => {
   }, [dispatch, navigate, setDocument]);
 
   if (processing) {
+    // Calculate stroke dashoffset for circular progress
+    const circumference = 264;
+    const dashoffset = circumference - (progressPercent / 100) * circumference;
+
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
         <div className="w-full max-w-md space-y-6 text-center">
           <h2 className="font-serif text-2xl font-semibold text-foreground">Processing your book…</h2>
-          <p className="text-muted-foreground">Extracting text, detecting chapters, building pages</p>
+          <p className="text-muted-foreground">{progressStage || 'Analyzing document structure'}</p>
           
           {/* Circular Progress Display */}
           <div className="flex justify-center py-6">
@@ -123,7 +121,7 @@ const Upload = () => {
                   strokeLinecap="round"
                 />
                 
-                {/* Animated Progress Circle */}
+                {/* Progress Circle */}
                 <circle
                   cx="50"
                   cy="50"
@@ -131,43 +129,36 @@ const Upload = () => {
                   fill="transparent"
                   stroke="currentColor"
                   strokeWidth="8"
-                  strokeDasharray="264 264"
-                  className="text-primary animate-pulse"
+                  strokeDasharray={`${circumference} ${circumference}`}
+                  className="text-primary transition-all duration-500 ease-out"
                   strokeLinecap="round"
-                  style={{
-                    animation: 'dash 2s ease-in-out infinite',
-                  }}
+                  style={{ strokeDashoffset: dashoffset }}
                 />
               </svg>
               
-              {/* Center Icon */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <FileText className="w-12 h-12 text-primary animate-pulse" />
+              {/* Center: Percentage */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-bold text-primary">{progressPercent}%</span>
               </div>
             </div>
           </div>
 
-          {/* OCR Progress Messages */}
-          {ocrProgress && (
+          {/* Progress Detail */}
+          {progressDetail && (
             <div className="mt-4 rounded-lg bg-muted/50 backdrop-blur-sm border border-border p-4 text-left space-y-3">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5">
                   <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
                 </div>
                 <p className="text-sm text-foreground font-mono flex-1">
-                  {ocrProgress}
+                  {progressDetail}
                 </p>
-              </div>
-              
-              <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                <span>💡</span>
-                <p>Scanned PDFs use OCR and may take longer to process</p>
               </div>
             </div>
           )}
           
           {/* Processing Steps */}
-          {!ocrProgress && (
+          {!progressDetail && (
             <div className="space-y-2 text-sm text-muted-foreground">
               <div className="flex items-center justify-center gap-2">
                 <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" />
@@ -176,15 +167,6 @@ const Upload = () => {
             </div>
           )}
         </div>
-        
-        {/* Add animation keyframes */}
-        <style>{`
-          @keyframes dash {
-            0% { stroke-dashoffset: 264; }
-            50% { stroke-dashoffset: 132; }
-            100% { stroke-dashoffset: 264; }
-          }
-        `}</style>
       </div>
     );
   }
