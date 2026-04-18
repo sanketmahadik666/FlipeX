@@ -32,18 +32,38 @@ export default function Bookshelf() {
     const cards = gridRef.current.querySelectorAll('.book-card');
     
     // Antigravity: idle levitation loop
-    const ambientTweens = gsap.to(cards, {
+    const ambientY = gsap.to(cards, {
       y:        GRAB_CONFIG.AMBIENT_FLOAT_Y,
       duration: GRAB_CONFIG.AMBIENT_FLOAT_DURATION,
       ease:     GRAB_CONFIG.AMBIENT_FLOAT_EASE,
       repeat:   GRAB_CONFIG.AMBIENT_FLOAT_REPEAT,
       yoyo:     GRAB_CONFIG.AMBIENT_FLOAT_YOYO,
-      stagger:  0.12,
+      stagger:  { each: GRAB_CONFIG.AMBIENT_FLOAT_STAGGER, from: "random" as any },
+    });
+
+    const ambientSway = gsap.to(cards, {
+      rotationZ: GRAB_CONFIG.AMBIENT_FLOAT_ROT_Z,
+      duration: GRAB_CONFIG.AMBIENT_SWAY_DURATION,
+      ease:     GRAB_CONFIG.AMBIENT_SWAY_EASE,
+      repeat:   GRAB_CONFIG.AMBIENT_FLOAT_REPEAT,
+      yoyo:     GRAB_CONFIG.AMBIENT_FLOAT_YOYO,
+      stagger:  { each: GRAB_CONFIG.AMBIENT_FLOAT_STAGGER, from: "random" as any },
+    });
+
+    const ambientBreathe = gsap.to(cards, {
+      scale:    GRAB_CONFIG.AMBIENT_FLOAT_SCALE,
+      duration: GRAB_CONFIG.AMBIENT_BREATHE_SCALE_DURATION,
+      ease:     GRAB_CONFIG.AMBIENT_FLOAT_EASE,
+      repeat:   GRAB_CONFIG.AMBIENT_FLOAT_REPEAT,
+      yoyo:     GRAB_CONFIG.AMBIENT_FLOAT_YOYO,
+      stagger:  { each: GRAB_CONFIG.AMBIENT_FLOAT_STAGGER, from: "random" as any },
     });
 
     return () => {
       // Cleanup on unmount
-      ambientTweens.kill();
+      ambientY.kill();
+      ambientSway.kill();
+      ambientBreathe.kill();
     };
   }, []);
 
