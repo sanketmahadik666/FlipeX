@@ -65,3 +65,16 @@ export const currentParagraphIndexAtom = atom<number>({
   key: 'currentParagraphIndex',
   default: 0,
 });
+
+export interface UserBook {
+  id: string;
+  title: string;
+  author: string;
+  coverImage?: string;
+  file?: File;
+}
+
+export const userLibraryAtom = atom<UserBook[]>({
+  key: 'userLibrary',
+  default: [],
+});

@@ -1,204 +1,87 @@
-import { useCallback, useState } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
 import { useSetRecoilState } from 'recoil';
-import { Upload as UploadIcon, FileText, AlertCircle, BookOpen } from 'lucide-react';
-import { processPDFInWorker } from '@/lib/pipeline/pipelineWorkerClient';
-import { generateSampleDocument } from '@/lib/sampleDocument';
-import { setStatus, setCurrentDocumentId, setError } from '@/store/appSlice';
-import { processedDocumentAtom } from '@/state/recoilAtoms';
+import { Upload as UploadIcon, AlertCircle, Image as ImageIcon, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { userLibraryAtom } from '@/state/recoilAtoms';
 
 const Upload = () => {
   const navigate = useNavigate();
-  const dispatch = useDispatch();
-  const setDocument = useSetRecoilState(processedDocumentAtom);
-  const [processing, setProcessing] = useState(false);
+  const setUserLibrary = useSetRecoilState(userLibraryAtom);
   const [error, setLocalError] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState(false);
-  const [progressStage, setProgressStage] = useState('');
-  const [progressPercent, setProgressPercent] = useState(0);
-  const [progressDetail, setProgressDetail] = useState('');
 
-  const handleFile = useCallback(async (file: File) => {
+  // Form State
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [coverImage, setCoverImage] = useState<string | undefined>();
+  const [title, setTitle] = useState('');
+  const [author, setAuthor] = useState('');
+  const [dragOverPdf, setDragOverPdf] = useState(false);
+
+  const coverInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePdfDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverPdf(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handlePdfSelect(file);
+  }, []);
+
+  const handlePdfSelect = (file: File) => {
     if (!file.name.toLowerCase().endsWith('.pdf')) {
-      setLocalError('Please upload a PDF file.');
+      setLocalError('Please upload a valid PDF file.');
+      return;
+    }
+    setPdfFile(file);
+    setLocalError(null);
+    
+    // Auto-fill title from filename if empty
+    if (!title) {
+      setTitle(file.name.replace(/\.pdf$/i, '').replace(/[-_]/g, ' '));
+    }
+  };
+
+  const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        setLocalError('Cover must be an image file.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setCoverImage(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = () => {
+    if (!pdfFile) {
+      setLocalError('A PDF file is required to add a book.');
       return;
     }
 
-    setProcessing(true);
-    setLocalError(null);
-    setProgressStage('');
-    setProgressPercent(0);
-    setProgressDetail('');
-    dispatch(setStatus('processing'));
+    const newBook = {
+      id: `user-book-${Date.now()}`,
+      title: title || 'Untitled Book',
+      author: author || 'Unknown Author',
+      coverImage: coverImage,
+      file: pdfFile
+    };
 
-    try {
-      const doc = await processPDFInWorker(
-        file,
-        (stage, percent, detail) => {
-          setProgressStage(stage);
-          setProgressPercent(percent);
-          setProgressDetail(detail || '');
-        }
-      );
-      setDocument(doc as any);
-      dispatch(setCurrentDocumentId(doc.id));
-      dispatch(setStatus('ready'));
-      navigate('/experience');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to process PDF.';
-      setLocalError(msg);
-      dispatch(setError(msg));
-      setProcessing(false);
-      setProgressStage('');
-    }
-  }, [dispatch, navigate, setDocument]);
-
-  const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  }, [handleFile]);
-
-  const onFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
-  }, [handleFile]);
-
-  const loadSampleDocument = useCallback(async () => {
-    setProcessing(true);
-    setLocalError(null);
-    dispatch(setStatus('processing'));
-
-    try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      const doc = generateSampleDocument();
-      setDocument(doc);
-      dispatch(setCurrentDocumentId(doc.id));
-      dispatch(setStatus('ready'));
-      navigate('/experience');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to load sample document.';
-      setLocalError(msg);
-      dispatch(setError(msg));
-      setProcessing(false);
-    }
-  }, [dispatch, navigate, setDocument]);
-
-  if (processing) {
-    // Calculate stroke dashoffset for circular progress
-    const circumference = 264;
-    const dashoffset = circumference - (progressPercent / 100) * circumference;
-
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
-        <div className="w-full max-w-md space-y-6 text-center">
-          <h2 className="font-serif text-2xl font-semibold text-foreground">Processing your book…</h2>
-          <p className="text-muted-foreground">{progressStage || 'Analyzing document structure'}</p>
-          
-          {/* Circular Progress Display */}
-          <div className="flex justify-center py-6">
-            <div className="relative">
-              <div className="absolute inset-0 bg-primary/5 rounded-full blur-2xl" />
-              <svg
-                className="transform -rotate-90"
-                width="160"
-                height="160"
-                viewBox="0 0 100 100"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                {/* Background Circle */}
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="42"
-                  fill="transparent"
-                  stroke="currentColor"
-                  strokeWidth="8"
-                  className="text-muted/20"
-                  strokeLinecap="round"
-                />
-                
-                {/* Progress Circle */}
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="42"
-                  fill="transparent"
-                  stroke="currentColor"
-                  strokeWidth="8"
-                  strokeDasharray={`${circumference} ${circumference}`}
-                  className="text-primary transition-all duration-500 ease-out"
-                  strokeLinecap="round"
-                  style={{ strokeDashoffset: dashoffset }}
-                />
-              </svg>
-              
-              {/* Center: Percentage */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-2xl font-bold text-primary">{progressPercent}%</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Progress Detail */}
-          {progressDetail && (
-            <div className="mt-4 rounded-lg bg-muted/50 backdrop-blur-sm border border-border p-4 text-left space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5">
-                  <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                </div>
-                <p className="text-sm text-foreground font-mono flex-1">
-                  {progressDetail}
-                </p>
-              </div>
-            </div>
-          )}
-          
-          {/* Processing Steps */}
-          {!progressDetail && (
-            <div className="space-y-2 text-sm text-muted-foreground">
-              <div className="flex items-center justify-center gap-2">
-                <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" />
-                <span>Analyzing document structure</span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
+    // Add to library and navigate
+    setUserLibrary((prev) => [...prev, newBook]);
+    navigate('/bookshelf');
+  };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
-      <div className="w-full max-w-lg space-y-6 text-center">
-        <h1 className="font-serif text-3xl font-bold text-foreground">Upload Your Book</h1>
-        <p className="text-muted-foreground">Drop a PDF file to begin your reading experience</p>
-
-        <label
-          className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-12 transition-colors ${
-            dragOver
-              ? 'border-primary bg-primary/5'
-              : 'border-border hover:border-primary/50 hover:bg-card'
-          }`}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={onDrop}
-        >
-          <UploadIcon className="mb-4 h-10 w-10 text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">
-            Drag & drop your PDF here
-          </span>
-          <span className="mt-1 text-xs text-muted-foreground">or click to browse</span>
-          <input
-            type="file"
-            accept=".pdf"
-            className="hidden"
-            onChange={onFileSelect}
-          />
-        </label>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 pt-12 pb-24">
+      <div className="w-full max-w-xl space-y-8">
+        <div className="text-center">
+          <h1 className="font-serif text-3xl font-bold text-foreground">Add to Library</h1>
+          <p className="text-muted-foreground mt-2">Upload your PDF and customize its appearance on the bookshelf.</p>
+        </div>
 
         {error && (
           <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -207,26 +90,113 @@ const Upload = () => {
           </div>
         )}
 
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-border" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-card p-6 rounded-xl border border-border shadow-sm">
+          
+          {/* Cover Image Upload (Left Column) */}
+          <div className="md:col-span-1 flex flex-col gap-4">
+            <div 
+              className="relative aspect-[2/3] w-full rounded-md border-2 border-dashed border-border bg-muted/30 overflow-hidden flex flex-col items-center justify-center group cursor-pointer hover:border-primary/50 transition-colors"
+              onClick={() => coverInputRef.current?.click()}
+            >
+              {coverImage ? (
+                <>
+                  <img src={coverImage} alt="Cover Preview" className="absolute inset-0 w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="text-white text-xs font-semibold">Change Cover</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <ImageIcon className="h-8 w-8 text-muted-foreground mb-2 group-hover:text-primary transition-colors" />
+                  <span className="text-xs text-muted-foreground text-center px-4">Click to add poster</span>
+                </>
+              )}
+              <input 
+                type="file" 
+                ref={coverInputRef} 
+                accept="image/*" 
+                className="hidden" 
+                onChange={handleCoverSelect} 
+              />
+            </div>
           </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">Or</span>
+
+          {/* Metadata & PDF (Right Column) */}
+          <div className="md:col-span-2 space-y-5">
+            
+            {/* PDF Dropzone */}
+            <div>
+              <label className="text-sm font-medium mb-1.5 block text-left">Book File (PDF) *</label>
+              <label
+                className={`flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors ${
+                  dragOverPdf
+                    ? 'border-primary bg-primary/5'
+                    : pdfFile 
+                      ? 'border-green-500/50 bg-green-500/5' 
+                      : 'border-border hover:border-primary/50 hover:bg-muted/30'
+                }`}
+                onDragOver={(e) => { e.preventDefault(); setDragOverPdf(true); }}
+                onDragLeave={() => setDragOverPdf(false)}
+                onDrop={handlePdfDrop}
+              >
+                {pdfFile ? (
+                  <div className="flex items-center gap-3 text-green-600 dark:text-green-500">
+                    <CheckCircle2 className="h-6 w-6 shrink-0" />
+                    <span className="text-sm font-medium truncate max-w-[200px]">{pdfFile.name}</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center text-center">
+                    <UploadIcon className="mb-2 h-6 w-6 text-muted-foreground" />
+                    <span className="text-sm font-medium text-foreground">Select PDF File</span>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handlePdfSelect(f);
+                  }}
+                />
+              </label>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1.5 block text-left">Title</label>
+              <Input 
+                placeholder="e.g. The Lord of the Rings" 
+                value={title} 
+                onChange={e => setTitle(e.target.value)} 
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-1.5 block text-left">Author</label>
+              <Input 
+                placeholder="e.g. J.R.R. Tolkien" 
+                value={author} 
+                onChange={e => setAuthor(e.target.value)} 
+              />
+            </div>
+
           </div>
         </div>
 
-        <Button 
-          variant="outline" 
-          className="w-full" 
-          onClick={loadSampleDocument}
-        >
-          <BookOpen className="mr-2 h-4 w-4" />
-          Try Sample Document
-        </Button>
+        <div className="flex flex-col gap-3">
+          <Button 
+            size="lg" 
+            className="w-full text-md" 
+            onClick={handleSubmit}
+            disabled={!pdfFile}
+          >
+            Add to Bookshelf
+          </Button>
+          <Button variant="ghost" onClick={() => navigate('/bookshelf')}>
+            Cancel & Return to Library
+          </Button>
+        </div>
 
-        <Button variant="ghost" onClick={() => navigate('/')}>          ← Back
-        </Button>
       </div>
     </div>
   );
