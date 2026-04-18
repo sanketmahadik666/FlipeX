@@ -1,11 +1,10 @@
-/\*\*
-
-- bookGrab.config.js — ANTIGRAVITY VARIANT
-- Single source of truth for all animation constants.
-- Direction annotations: ↑ up ↓ down ← left → right ↻ clockwise ↺ counter-clockwise
-- GPU note: only transform + opacity are ever animated. All others are static CSS.
-- Total estimated timeline: ~2.45s (P0 → P5b)
-  \*/
+/**
+ * bookGrab.config.js — ANTIGRAVITY VARIANT
+ * Single source of truth for all animation constants.
+ * Direction annotations: ↑ up ↓ down ← left → right ↻ clockwise ↺ counter-clockwise
+ * GPU note: only transform + opacity are ever animated. All others are static CSS.
+ * Total estimated timeline: ~2.45s (P0 → P5b)
+ */
 
 export const GRAB_CONFIG = {
 
@@ -288,26 +287,25 @@ DEBUG_PHYSICS_PANEL: false, // floating panel showing live values
 
 };
 
-/\*\*
-
-- PARAMETER INDEX (quick-reference for bookGrab.js consumers)
--
-- Phase │ Key prefix │ Count │ Direction summary
-- ──────┼─────────────────────┼───────┼────────────────────────────────────────
-- P0 │ LEVITATION*PULSE* │ 12 │ x ←→ y ↑ scale breathe rotZ sway
-- P1 │ PINCH\_ │ 14 │ scaleY compress ↓ y ↑ z forward
-- P2 │ TILT\_ │ 11 │ rotY back rotX top ↑ y ↑ z forward
-- P3 │ ARC\_ │ 16 │ y ↑↑ dominant x → small scale ↑ big
-- P4 │ EXIT\_ │ 14 │ y ↑↑↑ viewport exit rotZ ↻ positive
-- P5 │ SIBLING\_ │ 19 │ y ↑ then y=0 elastic x ← gap close
-- Amb │ AMBIENT\_ │ 14 │ y ↑↓ infinite sway breathe
-- 3D │ PERSPECTIVE / CARD\_ │ 10 │ 900px origin 50% 80% z-stack
-- FX │ GLOW* / TINT* │ 16 │ upward shadow ↑ blue tint static CSS
-- Spring│ SPRING\_ │ 12 │ elastic.out / back.out tuning
-- Time │ PHASE*OVERLAP* │ 10 │ inter-phase position strings
-- Resp │ MOBILE* / TABLET* │ 12 │ scale factors per viewport
-- DOM │ CLASS* / SELECTOR* │ 8 │ class names + query selectors
-- A11y │ A11Y\_ │ 6 │ reduced-motion instant fallback
-- Debug │ DEBUG\_ │ 9 │ dev tools — all false in prod
--       │                     │ 183   │
-  \*/
+/**
+ * PARAMETER INDEX (quick-reference for bookGrab.js consumers)
+ *
+ * Phase │ Key prefix │ Count │ Direction summary
+ * ──────┼─────────────────────┼───────┼────────────────────────────────────────
+ * P0 │ LEVITATION*PULSE* │ 12 │ x ←→ y ↑ scale breathe rotZ sway
+ * P1 │ PINCH\_ │ 14 │ scaleY compress ↓ y ↑ z forward
+ * P2 │ TILT\_ │ 11 │ rotY back rotX top ↑ y ↑ z forward
+ * P3 │ ARC\_ │ 16 │ y ↑↑ dominant x → small scale ↑ big
+ * P4 │ EXIT\_ │ 14 │ y ↑↑↑ viewport exit rotZ ↻ positive
+ * P5 │ SIBLING\_ │ 19 │ y ↑ then y=0 elastic x ← gap close
+ * Amb │ AMBIENT\_ │ 14 │ y ↑↓ infinite sway breathe
+ * 3D │ PERSPECTIVE / CARD\_ │ 10 │ 900px origin 50% 80% z-stack
+ * FX │ GLOW* / TINT* │ 16 │ upward shadow ↑ blue tint static CSS
+ * Spring│ SPRING\_ │ 12 │ elastic.out / back.out tuning
+ * Time │ PHASE*OVERLAP* │ 10 │ inter-phase position strings
+ * Resp │ MOBILE* / TABLET* │ 12 │ scale factors per viewport
+ * DOM │ CLASS* / SELECTOR* │ 8 │ class names + query selectors
+ * A11y │ A11Y\_ │ 6 │ reduced-motion instant fallback
+ * Debug │ DEBUG\_ │ 9 │ dev tools — all false in prod
+ *       │                     │ 183   │
+ */

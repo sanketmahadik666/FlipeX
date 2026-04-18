@@ -21,14 +21,19 @@
   will-change: transform, opacity; /* Keep items mostly optimized visually inside this container */
 }
 
-/* Enhances glow right as the interaction begins with an explosive flash */
+/* Enhances glow right as the interaction begins with an explosive flash as per GRAB_CONFIG */
 @keyframes cinematic-flash {
-  0% { filter: drop-shadow(0 -4px 8px rgba(100, 160, 255, 0.18)) brightness(1); }
-  30% { filter: drop-shadow(0 -20px 48px rgba(180, 220, 255, 0.9)) brightness(1.2); }
-  100% { filter: drop-shadow(0 -10px 24px rgba(120, 180, 255, 0.45)) brightness(1.1); }
+  0% { 
+    filter: drop-shadow(0px -4px 8px rgba(100, 160, 255, 0.18)) brightness(1); 
+  }
+  30% { 
+    filter: drop-shadow(0px -24px 24px rgba(120, 200, 255, 0.45)) brightness(1.2); 
+  }
+  100% { 
+    filter: drop-shadow(0px -10px 24px rgba(120, 180, 255, 0.45)) brightness(1.1); 
+  }
 }
 
 .book-grid.is-antigravity .book-card.is-grabbing {
-  animation: cinematic-flash 0.6s ease-out forwards;
-  z-index: 100; /* Bring above other siblings completely */
+  animation: cinematic-flash 0.4s ease-out forwards;
 }
