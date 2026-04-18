@@ -20,21 +20,21 @@ export const GRAB_CONFIG = {
   TILT_DELAY: 0.04,
 
   // Phase 3 : AscendArc
-  ARC_X: 80,
-  ARC_Y: -320,
-  ARC_ROT_Z: 8,
-  ARC_SCALE: 1.1,
-  ARC_DURATION: 0.65,
-  ARC_EASE: "power2.in",
+  ARC_X: 120, // Wider arc
+  ARC_Y: -350,
+  ARC_ROT_Z: 12,
+  ARC_SCALE: 1.6, // Explodes much closer to the camera!
+  ARC_DURATION: 0.85, // Hangs in the air slightly longer
+  ARC_EASE: "power2.inOut",
   ARC_DELAY: 0.08,
 
   // Phase 4 : VoidExit
-  EXIT_X: 80,
-  EXIT_Y: -680,
-  EXIT_ROT_Z: 18,
-  EXIT_ROT_X: -20,
-  EXIT_DURATION: 0.55,
-  EXIT_EASE: "expo.in",
+  EXIT_X: 150,
+  EXIT_Y: -800, // Shoots much higher
+  EXIT_ROT_Z: 45, // Extreme spin out
+  EXIT_ROT_X: -40,
+  EXIT_DURATION: 0.45, // Snappier escape
+  EXIT_EASE: "power4.in",
   EXIT_DELAY: 0.04,
 
   // Phase 5 : SiblingLevitationWave

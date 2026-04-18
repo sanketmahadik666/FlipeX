@@ -21,8 +21,8 @@ export const BookCard: React.FC<BookCardProps> = ({ title, author, coverImage, o
     if (parent) {
       const allCards = Array.from(parent.querySelectorAll('.book-card')) as HTMLElement[];
       const currentIndex = allCards.indexOf(cardRef.current);
-      // Grab siblings after this one (for the levitation wave effect)
-      siblings = allCards.slice(currentIndex + 1);
+      // Grab ALL other siblings for the cinematic dimming + levitation wave effect
+      siblings = allCards.filter(c => c !== cardRef.current);
     }
 
     // Fire the animation

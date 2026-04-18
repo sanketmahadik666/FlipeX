@@ -26,7 +26,21 @@ export function grabBook(
     }
   });
 
-  tl.call(() => { card.style.willChange = 'transform, opacity'; })
+  tl.call(() => { 
+    card.style.willChange = 'transform, opacity'; 
+    card.style.zIndex = '100'; // Target pops in front of everything
+
+    // Cinematic dim scale on non-target siblings
+    if (siblings.length > 0) {
+      gsap.to(siblings, {
+        opacity: 0.3,
+        filter: 'blur(3px)',
+        scale: 0.96,
+        duration: 0.5,
+        ease: 'power2.out',
+      });
+    }
+  })
     // P0 — LevitationPulse (Pre-ignition field charge)
     .to(card, {
       x: c.LEVITATION_PULSE_X,
