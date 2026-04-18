@@ -15,6 +15,7 @@ const Landing = lazy(() => import("./pages/Landing"));
 const Upload = lazy(() => import("./pages/Upload"));
 const ExperienceSelector = lazy(() => import("./pages/ExperienceSelector"));
 const Reader = lazy(() => import("./pages/Reader"));
+const Bookshelf = lazy(() => import("./pages/Bookshelf"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
@@ -39,6 +40,7 @@ const App = () => (
                 <Routes>
                   <Route path="/" element={<Landing />} />
                   <Route path="/upload" element={<Upload />} />
+                  <Route path="/bookshelf" element={<Bookshelf />} />
                   <Route path="/experience" element={<ExperienceSelector />} />
                   <Route path="/reader" element={<Reader />} />
                   <Route path="*" element={<NotFound />} />

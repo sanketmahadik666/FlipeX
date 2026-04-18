@@ -20,13 +20,23 @@ const Landing = () => {
           Transform any PDF into an immersive, book-like reading experience.
           Page by page. Mode by mode. The way reading was meant to feel.
         </p>
-        <Button
-          size="lg"
-          className="text-lg px-10 py-6 rounded-lg"
-          onClick={() => navigate('/upload')}
-        >
-          Get Started
-        </Button>
+        <div className="flex flex-col gap-4 sm:flex-row justify-center">
+          <Button
+            size="lg"
+            className="text-lg px-10 py-6 rounded-lg"
+            onClick={() => navigate('/upload')}
+          >
+            Get Started
+          </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            className="text-lg px-10 py-6 rounded-lg"
+            onClick={() => navigate('/bookshelf')}
+          >
+            Antigravity Library
+          </Button>
+        </div>>
       </div>
     </div>
   );

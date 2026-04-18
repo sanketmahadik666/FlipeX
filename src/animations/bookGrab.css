@@ -1,0 +1,28 @@
+@import './bookGrab.config.ts';
+
+/* Perspective container for the bookshelf grid */
+#drawer .book-grid {
+  /* Set by the config specifications */
+  perspective: 900px;
+  perspective-origin: 50% 80%;
+  transform-style: preserve-3d;
+}
+
+/* Antigravity variant styling */
+.book-grid.is-antigravity {
+  --float-color-tint: rgba(120, 180, 255, 0.06);
+  background: var(--float-color-tint);
+}
+
+.book-grid.is-antigravity .book-card {
+  transform-style: preserve-3d;
+  filter: drop-shadow(0 -4px 8px rgba(100, 160, 255, 0.18));
+  /* Upward glow — visual hint of antigravity field */
+  will-change: transform, opacity; /* Keep items mostly optimized visually inside this container */
+}
+
+/* Enhances glow right as the interaction begins */
+.book-grid.is-antigravity .book-card.is-grabbing {
+  filter: drop-shadow(0 -10px 24px rgba(120, 180, 255, 0.45));
+  z-index: 50; /* Bring above other siblings */
+}
