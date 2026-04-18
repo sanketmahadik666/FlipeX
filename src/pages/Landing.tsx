@@ -36,7 +36,7 @@ const Landing = () => {
           >
             Antigravity Library
           </Button>
-        </div>>
+        </div>
       </div>
     </div>
   );
