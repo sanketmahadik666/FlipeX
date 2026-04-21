@@ -1,10 +1,11 @@
 import React, { useCallback, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSetRecoilState } from 'recoil';
-import { Upload as UploadIcon, AlertCircle, Image as ImageIcon, CheckCircle2 } from 'lucide-react';
+import { Upload as UploadIcon, AlertCircle, Image as ImageIcon, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { userLibraryAtom } from '@/state/recoilAtoms';
+import { saveBook } from '@/lib/bookStorage';
 
 const Upload = () => {
   const navigate = useNavigate();
@@ -56,11 +57,15 @@ const Upload = () => {
     }
   };
 
-  const handleSubmit = () => {
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async () => {
     if (!pdfFile) {
       setLocalError('A PDF file is required to add a book.');
       return;
     }
+
+    setSaving(true);
 
     const newBook = {
       id: `user-book-${Date.now()}`,
@@ -70,9 +75,18 @@ const Upload = () => {
       file: pdfFile
     };
 
-    // Add to library and navigate
-    setUserLibrary((prev) => [...prev, newBook]);
-    navigate('/bookshelf');
+    try {
+      // Persist to IndexedDB so the book survives refresh
+      await saveBook(newBook);
+
+      // Also add to Recoil for immediate in-session use
+      setUserLibrary((prev) => [...prev, newBook]);
+      navigate('/bookshelf');
+    } catch (e) {
+      console.error('Failed to save book:', e);
+      setLocalError('Failed to save book to local storage. Please try again.');
+      setSaving(false);
+    }
   };
 
   return (
@@ -113,10 +127,10 @@ const Upload = () => {
               )}
               <input 
                 type="file" 
-                ref={coverInputRef} 
                 accept="image/*" 
-                className="hidden" 
-                onChange={handleCoverSelect} 
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                onChange={handleCoverSelect}
+                title="Upload Cover Image"
               />
             </div>
           </div>
@@ -153,11 +167,12 @@ const Upload = () => {
                 <input
                   type="file"
                   accept=".pdf"
-                  className="hidden"
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
                     if (f) handlePdfSelect(f);
                   }}
+                  title="Upload PDF Book"
                 />
               </label>
             </div>
