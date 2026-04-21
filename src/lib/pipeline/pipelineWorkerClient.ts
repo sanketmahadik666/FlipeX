@@ -21,20 +21,30 @@ export async function processPDFInWorker(
   config?: Partial<PipelineConfig>
 ): Promise<ProcessedDocument> {
   const arrayBuffer = await file.arrayBuffer();
-  const fileName = file.name;
+  return processPDFBufferInWorker(arrayBuffer, file.name, onProgress, config);
+}
 
-  // Try Web Worker first
+/**
+ * Process a PDF that's already been loaded as an ArrayBuffer
+ * (e.g. fetched from the server).
+ *
+ * Uses the same Worker-first / main-thread fallback path as the
+ * File-based variant so server-loaded books go through the exact
+ * same client-side rendering pipeline as locally-uploaded ones.
+ */
+export async function processPDFBufferInWorker(
+  arrayBuffer: ArrayBuffer,
+  fileName: string,
+  onProgress?: ProgressCallback,
+  config?: Partial<PipelineConfig>
+): Promise<ProcessedDocument> {
   try {
-    return await runInWorker(arrayBuffer, fileName, config, onProgress);
+    // Clone before transferring so the main thread keeps a copy for fallback.
+    const transferable = arrayBuffer.slice(0);
+    return await runInWorker(transferable, fileName, config, onProgress);
   } catch (workerError) {
     console.warn('Web Worker failed, falling back to main thread:', workerError);
-    // Fallback: run on main thread
-    return processDocument(
-      arrayBuffer,
-      fileName,
-      config,
-      onProgress
-    );
+    return processDocument(arrayBuffer, fileName, config, onProgress);
   }
 }
 

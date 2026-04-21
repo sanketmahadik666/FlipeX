@@ -11,9 +11,8 @@ import { GRAB_CONFIG } from '@/animations/bookGrab.config';
 import { generateSampleDocument } from '@/lib/sampleDocument';
 import { setStatus, setCurrentDocumentId } from '@/store/appSlice';
 import { processedDocumentAtom } from '@/state/recoilAtoms';
-import { processPDFInWorker } from '@/lib/pipeline/pipelineWorkerClient';
+import { processPDFBufferInWorker } from '@/lib/pipeline/pipelineWorkerClient';
 import { listBooks, type ApiBook, type BookListResponse, fetchPdfBuffer } from '@/lib/booksApi';
-import { processDocument } from '@/lib/pipeline/pdfPipeline.worker';
 import '@/animations/bookGrab.css';
 
 // Mock library kept as fallback when no books have been uploaded yet
@@ -101,9 +100,9 @@ export default function Bookshelf() {
       // Fetch the raw PDF bytes from the server (server supports HTTP Range,
       // so the browser/PDF.js can fetch sub-ranges efficiently as well).
       const buffer = await fetchPdfBuffer(book.pdfUrl);
-      // Process directly on the main thread with the buffer we already have,
-      // which avoids re-reading a File and keeps memory predictable.
-      const doc = await processDocument(buffer, book.pdfFileName, undefined, onProgress);
+      // Run through the same Web Worker pipeline used for locally uploaded
+      // PDFs so rendering stays identical regardless of source.
+      const doc = await processPDFBufferInWorker(buffer, book.pdfFileName, onProgress);
       doc.title = book.title || doc.title;
       setDocument(doc as any);
       dispatch(setCurrentDocumentId(doc.id));
