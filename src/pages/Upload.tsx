@@ -1,13 +1,18 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Upload as UploadIcon, AlertCircle, Image as ImageIcon, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { uploadBook } from '@/lib/booksApi';
+import { uploadBook, type BookListResponse } from '@/lib/booksApi';
 import { extractCoverFromPdf, getPdfPageCount } from '@/lib/coverExtractor';
+
+const PAGE_SIZE = 12; // MUST match Bookshelf.tsx PAGE_SIZE
 
 const Upload = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
   const [error, setLocalError] = useState<string | null>(null);
 
   // Form state
@@ -46,8 +51,7 @@ const Upload = () => {
     }
   };
 
-  // Auto-extract cover (page 1) and page count whenever a new PDF is selected
-  // and the user hasn't manually picked a cover.
+  // Auto-extract cover (page 1) and page count when PDF is selected
   useEffect(() => {
     if (!pdfFile) return;
     let cancelled = false;
@@ -55,7 +59,6 @@ const Upload = () => {
       const count = await getPdfPageCount(pdfFile);
       if (!cancelled) setPageCount(count);
 
-      // Only auto-extract if the user didn't already provide a cover
       if (coverBlob && !coverAuto) return;
       setExtractingCover(true);
       const cover = await extractCoverFromPdf(pdfFile);
@@ -92,11 +95,14 @@ const Upload = () => {
       setLocalError('A PDF file is required to add a book.');
       return;
     }
+
     setSaving(true);
     setUploadPct(0);
     setLocalError(null);
+
     try {
-      await uploadBook({
+      // STEP 1: Upload to server
+      const newBook = await uploadBook({
         pdf: pdfFile,
         cover: coverBlob,
         title: title || pdfFile.name.replace(/\.pdf$/i, ''),
@@ -104,9 +110,36 @@ const Upload = () => {
         pageCount: pageCount ?? undefined,
         onProgress: setUploadPct,
       });
-      navigate('/bookshelf');
+
+      // STEP 2: Optimistically prepend the new book to page 1 cache
+      queryClient.setQueryData(
+        ['/api/books', 1, PAGE_SIZE],
+        (oldData: BookListResponse | undefined) => {
+          if (!oldData) return oldData;
+          return {
+            ...oldData,
+            items: [newBook, ...oldData.items.slice(0, PAGE_SIZE - 1)],
+            total: oldData.total + 1,
+            totalPages: Math.ceil((oldData.total + 1) / PAGE_SIZE),
+          } as BookListResponse;
+        }
+      );
+
+      // STEP 3: Invalidate ALL book queries (all pages) so Bookshelf always
+      // refetches fresh data when it mounts next time
+      await queryClient.cancelQueries({ queryKey: ['/api/books'] });
+      await queryClient.invalidateQueries({
+        queryKey: ['/api/books'],
+        exact: false,
+      });
+
+      // STEP 4: Small delay lets React Query flush before unmount
+      setTimeout(() => navigate('/bookshelf'), 100);
+
     } catch (e: any) {
       console.error('Upload failed:', e);
+      // Rollback optimistic update
+      queryClient.removeQueries({ queryKey: ['/api/books', 1, PAGE_SIZE], exact: true });
       setLocalError(e?.message || 'Failed to upload book.');
       setSaving(false);
     }
@@ -173,11 +206,10 @@ const Upload = () => {
 
           {/* Metadata + PDF */}
           <div className="md:col-span-2 space-y-5">
-
             <div>
               <label className="text-sm font-medium mb-1.5 block text-left">Book File (PDF) *</label>
               <label
-                className={`flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors ${
+                className={`relative flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors ${
                   dragOverPdf
                     ? 'border-primary bg-primary/5'
                     : pdfFile
@@ -208,10 +240,7 @@ const Upload = () => {
                   type="file"
                   accept=".pdf"
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handlePdfSelect(f);
-                  }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePdfSelect(f); }}
                   title="Upload PDF Book"
                   data-testid="input-pdf"
                 />
@@ -237,7 +266,6 @@ const Upload = () => {
                 data-testid="input-author"
               />
             </div>
-
           </div>
         </div>
 
@@ -265,14 +293,15 @@ const Upload = () => {
             data-testid="button-submit-upload"
           >
             {saving ? (
-              <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</span>
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" /> Adding to Library…
+              </span>
             ) : 'Add to Bookshelf'}
           </Button>
           <Button variant="ghost" onClick={() => navigate('/bookshelf')} disabled={saving} data-testid="button-cancel-upload">
             Cancel & Return to Library
           </Button>
         </div>
-
       </div>
     </div>
   );

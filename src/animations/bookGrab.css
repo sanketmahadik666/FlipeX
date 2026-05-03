@@ -1,14 +1,21 @@
+/* ═══════════════════════════════════════════════════════════════════
+   BOOKSHELF 3-D RENDERING SETUP
+   Perspective + preserve-3d must be set on the container so the
+   card's rotationY/X has depth effect. overflow: visible is required
+   to allow cards to travel outside the shelf bounds during animation.
+   ═══════════════════════════════════════════════════════════════════ */
 
-
-/* Perspective container for the bookshelf grid */
 #drawer .book-grid {
-  /* Set by the config specifications */
   perspective: 900px;
   perspective-origin: 50% 80%;
   transform-style: preserve-3d;
+  position: relative;
+  overflow: visible; /* cards must exit shelf bounds during arc */
 }
 
-/* Antigravity variant styling */
+/* ───────────────────────────────────────────────────────────────────
+   ANTIGRAVITY VARIANT — shelf tint + upward glow on every card
+   ─────────────────────────────────────────────────────────────────── */
 .book-grid.is-antigravity {
   --float-color-tint: rgba(120, 180, 255, 0.06);
   background: var(--float-color-tint);
@@ -16,24 +23,46 @@
 
 .book-grid.is-antigravity .book-card {
   transform-style: preserve-3d;
+  backface-visibility: hidden;   /* no ghost render during rotationY */
+  isolation: isolate;            /* own stacking context */
   filter: drop-shadow(0 -4px 8px rgba(100, 160, 255, 0.18));
-  /* Upward glow — visual hint of antigravity field */
-  will-change: transform, opacity; /* Keep items mostly optimized visually inside this container */
 }
 
-/* Enhances glow right as the interaction begins with an explosive flash as per GRAB_CONFIG */
+/* ───────────────────────────────────────────────────────────────────
+   ACTIVE GRAB STATE
+   z-index elevates grabbed card above siblings; pointer-events
+   disabled prevents accidental re-trigger mid-animation.
+   ─────────────────────────────────────────────────────────────────── */
+.book-card.is-grabbing {
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* ───────────────────────────────────────────────────────────────────
+   CINEMATIC FLASH — fires once on grab start, matching GRAB_CONFIG
+   glow values (§ 8). Uses drop-shadow + brightness on the card only.
+   ─────────────────────────────────────────────────────────────────── */
 @keyframes cinematic-flash {
-  0% { 
-    filter: drop-shadow(0px -4px 8px rgba(100, 160, 255, 0.18)) brightness(1); 
+  0% {
+    filter: drop-shadow(0px -4px  8px rgba(100, 160, 255, 0.18)) brightness(1.00);
   }
-  30% { 
-    filter: drop-shadow(0px -24px 24px rgba(120, 200, 255, 0.45)) brightness(1.2); 
+  30% {
+    filter: drop-shadow(0px -24px 24px rgba(120, 200, 255, 0.45)) brightness(1.20);
   }
-  100% { 
-    filter: drop-shadow(0px -10px 24px rgba(120, 180, 255, 0.45)) brightness(1.1); 
+  100% {
+    filter: drop-shadow(0px -10px 24px rgba(120, 180, 255, 0.45)) brightness(1.10);
   }
 }
 
 .book-grid.is-antigravity .book-card.is-grabbing {
   animation: cinematic-flash 0.4s ease-out forwards;
+}
+
+/* ───────────────────────────────────────────────────────────────────
+   HOVER — subtle forward-pop to hint interactivity
+   Uses transform only (GPU safe). Matches CARD_Z_HOVER: 40 in config.
+   ─────────────────────────────────────────────────────────────────── */
+.book-grid.is-antigravity .book-card:not(.is-grabbing):hover {
+  filter: drop-shadow(0 -8px 16px rgba(100, 160, 255, 0.30)) brightness(1.05);
+  transition: filter 0.2s ease;
 }

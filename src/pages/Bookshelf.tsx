@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import gsap from 'gsap';
 import { useDispatch } from 'react-redux';
 import { useSetRecoilState } from 'recoil';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 
 import { BookCard } from '@/components/BookCard';
@@ -15,8 +15,9 @@ import { processPDFBufferInWorker } from '@/lib/pipeline/pipelineWorkerClient';
 import { listBooks, type ApiBook, type BookListResponse, fetchPdfBuffer } from '@/lib/booksApi';
 import '@/animations/bookGrab.css';
 
-// Mock library kept as fallback when no books have been uploaded yet
-const MOCK_LIBRARY: Array<{ id: string; title: string; author: string; coverImage?: string }> = [
+const PAGE_SIZE = 12; // MUST match Upload.tsx PAGE_SIZE
+
+const MOCK_LIBRARY: Array<{ id: string; title: string; author: string }> = [
   { id: 'mock-1', title: 'The Antigravity Handbook', author: 'Dr. Float' },
   { id: 'mock-2', title: 'Quantum Kinetics', author: 'Marie Physics' },
   { id: 'mock-3', title: 'A Short History of Nearly Everything', author: 'Bill Bryson' },
@@ -24,12 +25,11 @@ const MOCK_LIBRARY: Array<{ id: string; title: string; author: string; coverImag
   { id: 'mock-5', title: 'GSAP Animation Strategies', author: 'Frontend Guru' },
 ];
 
-const PAGE_SIZE = 12;
-
 export default function Bookshelf() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const setDocument = useSetRecoilState(processedDocumentAtom);
+  const queryClient = useQueryClient();
   const gridRef = useRef<HTMLDivElement>(null);
 
   const [page, setPage] = useState(1);
@@ -38,22 +38,42 @@ export default function Bookshelf() {
   const [progressPercent, setProgressPercent] = useState(0);
   const [progressDetail, setProgressDetail] = useState('');
 
-  const { data, isLoading, isError } = useQuery<BookListResponse>({
+  // staleTime: 0 — always treat the cache as stale so the list refetches
+  // on every mount (covers the navigate-back-from-upload case).
+  const { data, isLoading, isError, refetch } = useQuery<BookListResponse>({
     queryKey: ['/api/books', page, PAGE_SIZE],
     queryFn: () => listBooks(page, PAGE_SIZE),
+    staleTime: 0,
+    gcTime: 5 * 60 * 1000,
   });
 
   const userBooks: ApiBook[] = data?.items ?? [];
   const totalPages = data?.totalPages ?? 1;
-  const showMocks = page === 1 && userBooks.length === 0;
-  const displayItems = showMocks
-    ? MOCK_LIBRARY.map(b => ({ kind: 'mock' as const, id: b.id, title: b.title, author: b.author, coverUrl: undefined as string | undefined }))
-    : userBooks.map(b => ({ kind: 'user' as const, id: b.id, title: b.title, author: b.author, coverUrl: b.coverUrl ?? undefined, book: b }));
 
-  // Ambient float animation
+  // Show mocks only when there are truly no books in the library at all.
+  const hasRealBooks = userBooks.length > 0 || (data != null && data.total > 0);
+  const showMocks = page === 1 && !hasRealBooks && !isLoading;
+
+  type DisplayItem =
+    | { kind: 'mock'; id: string; title: string; author: string; coverUrl: undefined }
+    | { kind: 'user'; id: string; title: string; author: string; coverUrl: string | undefined; book: ApiBook };
+
+  const displayItems: DisplayItem[] = showMocks
+    ? MOCK_LIBRARY.map(b => ({ kind: 'mock', id: b.id, title: b.title, author: b.author, coverUrl: undefined }))
+    : userBooks.map(b => ({ kind: 'user', id: b.id, title: b.title, author: b.author, coverUrl: b.coverUrl ?? undefined, book: b }));
+
+  // Refetch when the browser tab regains focus — keeps the list fresh
+  // after a user uploads in another tab or returns from upload page.
+  useEffect(() => {
+    const onFocus = () => refetch();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refetch]);
+
+  // Ambient levitation loop for book cards
   useEffect(() => {
     if (!gridRef.current) return;
-    const cards = gridRef.current.querySelectorAll('.book-card');
+    const cards = gridRef.current.querySelectorAll<HTMLElement>('.book-card');
     if (cards.length === 0) return;
 
     const ambientY = gsap.to(cards, {
@@ -62,7 +82,7 @@ export default function Bookshelf() {
       ease: GRAB_CONFIG.AMBIENT_FLOAT_EASE,
       repeat: GRAB_CONFIG.AMBIENT_FLOAT_REPEAT,
       yoyo: GRAB_CONFIG.AMBIENT_FLOAT_YOYO,
-      stagger: { each: GRAB_CONFIG.AMBIENT_FLOAT_STAGGER, from: "random" as any },
+      stagger: { each: GRAB_CONFIG.AMBIENT_FLOAT_STAGGER, from: 'random' as any },
     });
     const ambientSway = gsap.to(cards, {
       rotationZ: GRAB_CONFIG.AMBIENT_FLOAT_ROT_Z,
@@ -70,7 +90,7 @@ export default function Bookshelf() {
       ease: GRAB_CONFIG.AMBIENT_SWAY_EASE,
       repeat: GRAB_CONFIG.AMBIENT_FLOAT_REPEAT,
       yoyo: GRAB_CONFIG.AMBIENT_FLOAT_YOYO,
-      stagger: { each: GRAB_CONFIG.AMBIENT_FLOAT_STAGGER, from: "random" as any },
+      stagger: { each: GRAB_CONFIG.AMBIENT_FLOAT_STAGGER, from: 'random' as any },
     });
     const ambientBreathe = gsap.to(cards, {
       scale: GRAB_CONFIG.AMBIENT_FLOAT_SCALE,
@@ -78,7 +98,7 @@ export default function Bookshelf() {
       ease: GRAB_CONFIG.AMBIENT_FLOAT_EASE,
       repeat: GRAB_CONFIG.AMBIENT_FLOAT_REPEAT,
       yoyo: GRAB_CONFIG.AMBIENT_FLOAT_YOYO,
-      stagger: { each: GRAB_CONFIG.AMBIENT_FLOAT_STAGGER, from: "random" as any },
+      stagger: { each: GRAB_CONFIG.AMBIENT_FLOAT_STAGGER, from: 'random' as any },
     });
     return () => { ambientY.kill(); ambientSway.kill(); ambientBreathe.kill(); };
   }, [displayItems.length]);
@@ -97,11 +117,7 @@ export default function Bookshelf() {
     setProgressDetail(book.pdfFileName);
 
     try {
-      // Fetch the raw PDF bytes from the server (server supports HTTP Range,
-      // so the browser/PDF.js can fetch sub-ranges efficiently as well).
       const buffer = await fetchPdfBuffer(book.pdfUrl);
-      // Run through the same Web Worker pipeline used for locally uploaded
-      // PDFs so rendering stays identical regardless of source.
       const doc = await processPDFBufferInWorker(buffer, book.pdfFileName, onProgress);
       doc.title = book.title || doc.title;
       setDocument(doc as any);
@@ -142,7 +158,7 @@ export default function Bookshelf() {
             <div className="flex justify-center py-6">
               <div className="relative">
                 <div className="absolute inset-0 bg-primary/5 rounded-full blur-2xl" />
-                <svg className="transform -rotate-90" width="160" height="160" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <svg className="transform -rotate-90" width="160" height="160" viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="42" fill="transparent" stroke="currentColor" strokeWidth="8" className="text-muted/20" strokeLinecap="round" />
                   <circle cx="50" cy="50" r="42" fill="transparent" stroke="currentColor" strokeWidth="8"
                     strokeDasharray={`${circumference} ${circumference}`}
@@ -151,17 +167,17 @@ export default function Bookshelf() {
                     style={{ strokeDashoffset: dashoffset }}
                   />
                 </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <div className="absolute inset-0 flex items-center justify-center">
                   <span className="text-2xl font-bold text-primary" data-testid="text-processing-percent">{progressPercent}%</span>
                 </div>
               </div>
             </div>
 
             {progressDetail && (
-              <div className="mt-4 rounded-lg bg-muted/50 backdrop-blur-sm border border-border p-4 text-left space-y-3">
+              <div className="rounded-lg bg-muted/50 border border-border p-4 text-left">
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5"><div className="w-2 h-2 bg-primary rounded-full animate-pulse" /></div>
-                  <p className="text-sm text-foreground font-mono flex-1">{progressDetail}</p>
+                  <div className="mt-1.5 w-2 h-2 bg-primary rounded-full animate-pulse shrink-0" />
+                  <p className="text-sm text-foreground font-mono">{progressDetail}</p>
                 </div>
               </div>
             )}
@@ -172,8 +188,12 @@ export default function Bookshelf() {
       {/* HEADER */}
       <div className="mb-12 text-center text-zinc-100">
         <h1 className="text-4xl font-serif font-medium drop-shadow-md">Your Library</h1>
-        <p className="mt-2 text-zinc-400">
-          {data ? `${data.total} ${data.total === 1 ? 'book' : 'books'} in your library` : 'Select a book to start reading'}
+        <p className="mt-2 text-zinc-400" data-testid="text-library-count">
+          {isLoading
+            ? 'Loading…'
+            : data
+              ? `${data.total} ${data.total === 1 ? 'book' : 'books'} in your library`
+              : 'Select a book to start reading'}
         </p>
         <button
           onClick={() => navigate('/upload')}
@@ -184,14 +204,17 @@ export default function Bookshelf() {
         </button>
       </div>
 
-      {/* GRID */}
+      {/* BOOK GRID */}
       {isLoading ? (
         <div className="flex items-center gap-3 text-zinc-300" data-testid="text-loading-library">
           <Loader2 className="h-5 w-5 animate-spin" />
           Loading library…
         </div>
       ) : isError ? (
-        <div className="text-red-400" data-testid="text-library-error">Failed to load library. Refresh to try again.</div>
+        <div className="text-red-400" data-testid="text-library-error">
+          Failed to load library.{' '}
+          <button className="underline" onClick={() => refetch()}>Retry</button>
+        </div>
       ) : (
         <>
           <div
@@ -206,13 +229,15 @@ export default function Bookshelf() {
                 author={item.author}
                 coverImage={item.coverUrl}
                 onGrabCompleted={() =>
-                  item.kind === 'user' ? handleUserBookSelected(item.book) : handleMockSelected(item.id)
+                  item.kind === 'user'
+                    ? handleUserBookSelected((item as Extract<DisplayItem, { kind: 'user' }>).book)
+                    : handleMockSelected(item.id)
                 }
               />
             ))}
           </div>
 
-          {/* Pagination */}
+          {/* PAGINATION — only shown for real library pages > 1 */}
           {!showMocks && totalPages > 1 && (
             <div className="mt-8 flex items-center gap-4 text-zinc-200" data-testid="pagination-bookshelf">
               <button

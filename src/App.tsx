@@ -22,7 +22,9 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      // Individual queries like the book list override staleTime as needed.
+      // Keep a reasonable default for everything else.
+      staleTime: 60 * 1000, // 1 minute default
     },
   },
 });
