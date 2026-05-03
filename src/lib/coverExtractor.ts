@@ -27,7 +27,12 @@ export async function extractCoverFromPdf(
 ): Promise<ExtractedCover | null> {
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pdf = await pdfjsLib.getDocument({
+      data: arrayBuffer,
+      cMapUrl: '/cmaps/',
+      cMapPacked: true,
+      standardFontDataUrl: '/standard_fonts/',
+    }).promise;
     const page = await pdf.getPage(1);
 
     const baseViewport = page.getViewport({ scale: 1 });
@@ -70,7 +75,12 @@ export async function extractCoverFromPdf(
 export async function getPdfPageCount(file: File): Promise<number | null> {
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pdf = await pdfjsLib.getDocument({
+      data: arrayBuffer,
+      cMapUrl: '/cmaps/',
+      cMapPacked: true,
+      standardFontDataUrl: '/standard_fonts/',
+    }).promise;
     return pdf.numPages;
   } catch {
     return null;

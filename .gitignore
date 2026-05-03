@@ -24,3 +24,5 @@ dist-ssr
 *.sw?
 uploads/
 drizzle/
+public/cmaps/
+public/standard_fonts/

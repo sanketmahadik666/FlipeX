@@ -78,7 +78,12 @@ export async function processDocument(
 
   // ── Stage 2: Parse PDF ──
   progress('Loading PDF', 5, 'Parsing document pages...');
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
+  const pdf = await pdfjsLib.getDocument({
+    data: arrayBuffer.slice(0),
+    cMapUrl: '/cmaps/',
+    cMapPacked: true,
+    standardFontDataUrl: '/standard_fonts/',
+  }).promise;
   const numPages = pdf.numPages;
 
   // ── Stage 3: First pass — collect header/footer patterns ──
